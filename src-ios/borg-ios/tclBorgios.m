@@ -33,6 +33,11 @@
 
 static AVSpeechSynthesizer *gSpeech = nil;
 
+/* A dedicated transparent overlay window for toasts. A toast added directly to
+ * SDL's window is hidden because SDL re-raises its Metal view every frame; a
+ * separate window at a higher windowLevel composites reliably above it. */
+static UIWindow *gToastWindow = nil;
+
 /* The screen brightness present when we first touched it, used to restore the
  * "default" when de1app asks for a negative percentage (AndroWish convention). */
 static CGFloat gDefaultBrightness = -1.0;
@@ -169,15 +174,27 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
             NSString *m = [NSString stringWithUTF8String:Tcl_GetString(objv[2])];
             if (m) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    UIWindow *win = nil;
+                    /* find the foreground window scene */
+                    UIWindowScene *ws = nil;
                     for (UIScene *sc in [UIApplication sharedApplication].connectedScenes) {
                         if (![sc isKindOfClass:[UIWindowScene class]]) continue;
-                        UIWindowScene *ws = (UIWindowScene *)sc;
-                        for (UIWindow *w in ws.windows) { if (w.isKeyWindow) { win = w; break; } }
-                        if (!win && ws.windows.count) win = ws.windows.firstObject;
-                        if (win && sc.activationState == UISceneActivationStateForegroundActive) break;
+                        ws = (UIWindowScene *)sc;
+                        if (sc.activationState == UISceneActivationStateForegroundActive) break;
                     }
-                    [win makeToast:m];
+                    if (!ws) return;
+                    /* lazily create a transparent, non-interactive overlay window
+                     * above SDL's so the toast actually composites on screen */
+                    if (gToastWindow == nil) {
+                        gToastWindow = [[UIWindow alloc] initWithWindowScene:ws];
+                        gToastWindow.windowLevel = UIWindowLevelAlert + 1;
+                        gToastWindow.backgroundColor = [UIColor clearColor];
+                        gToastWindow.userInteractionEnabled = NO;
+                        gToastWindow.rootViewController = [UIViewController new];
+                        gToastWindow.hidden = NO;   /* show without becoming key (SDL keeps key) */
+                    }
+                    gToastWindow.frame = ws.coordinateSpace.bounds;
+                    gToastWindow.rootViewController.view.frame = gToastWindow.bounds;
+                    [gToastWindow.rootViewController.view makeToast:m];
                 });
             }
         }
