@@ -39,8 +39,9 @@ arm64 toolchain flags) are shared and documented there.
 - iOS-native shims (under [`src-ios/`](src-ios)) that re-implement the AndroWish
   `borg` and `ble` commands on Apple frameworks:
   - **`borg`** → `UIScreen` brightness, `UIDevice`/`UIScreen` info, `UIApplication
-    openURL`, AVSpeech, plus a `platform` subcommand (`ios`/`iossimulator`/
-    `maccatalyst`) so Tcl can identify the run target at runtime.
+    openURL`, AVSpeech, a native `toast` (via [scalessec/Toast](https://github.com/scalessec/Toast)),
+    plus a `platform` subcommand (`ios`/`iossimulator`/`maccatalyst`) so Tcl can
+    identify the run target at runtime.
   - **`ble`** → CoreBluetooth (scan / connect / read / write / notify), using the
     peripheral's CB UUID as its "address" since iOS hides the MAC.
 
@@ -107,3 +108,7 @@ The patches, scripts, shims, and documentation here are licensed under the **GNU
 General Public License v3.0** (see [`LICENSE`](LICENSE)). They are modifications
 to / instructions for AndroWish, SDL2, and Tcl/Tk; **those projects and the
 third-party libraries they bundle retain their own original licenses.**
+
+`src-ios/borg-ios/UIView+Toast.{h,m}` are from
+[scalessec/Toast](https://github.com/scalessec/Toast) and remain under their
+original **MIT** license (© Charles Scalesse), used by `borg toast`.

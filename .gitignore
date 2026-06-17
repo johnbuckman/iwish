@@ -8,3 +8,4 @@ dist/
 build/
 *.zip
 *.app/
+*.dylib

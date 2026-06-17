@@ -28,6 +28,8 @@
 #import <UIKit/UIKit.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <AVFoundation/AVFoundation.h>
+/* scalessec/Toast (ObjC) -- UIView (Toast) category: -makeToast:. */
+#import "UIView+Toast.h"
 
 static AVSpeechSynthesizer *gSpeech = nil;
 
@@ -159,8 +161,27 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
     }
 
     if (strcmp(sub, "toast") == 0) {
-        if (objc >= 3) { NSLog(@"toast: %s", Tcl_GetString(objv[2])); }
-        return TCL_OK; /* no transient UI yet */
+        /* Native toast via scalessec/Toast (UIView+Toast). de1app calls
+         * `borg toast <msg> ?duration? ?html?`; we just show the message text.
+         * Dispatch async to the main thread (never sync -- Tcl runs off-main and
+         * a sync hop would deadlock the SDL/Tk loop). */
+        if (objc >= 3) {
+            NSString *m = [NSString stringWithUTF8String:Tcl_GetString(objv[2])];
+            if (m) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    UIWindow *win = nil;
+                    for (UIScene *sc in [UIApplication sharedApplication].connectedScenes) {
+                        if (![sc isKindOfClass:[UIWindowScene class]]) continue;
+                        UIWindowScene *ws = (UIWindowScene *)sc;
+                        for (UIWindow *w in ws.windows) { if (w.isKeyWindow) { win = w; break; } }
+                        if (!win && ws.windows.count) win = ws.windows.firstObject;
+                        if (win && sc.activationState == UISceneActivationStateForegroundActive) break;
+                    }
+                    [win makeToast:m];
+                });
+            }
+        }
+        return TCL_OK;
     }
 
     /* Android-only concepts: accept and no-op so the app keeps running. */
