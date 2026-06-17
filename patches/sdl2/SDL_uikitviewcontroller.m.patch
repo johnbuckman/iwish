@@ -1,0 +1,116 @@
+--- a/src/video/uikit/SDL_uikitviewcontroller.m	2025-01-01 16:48:45
++++ b/src/video/uikit/SDL_uikitviewcontroller.m	2026-06-17 09:33:33
+@@ -32,6 +32,7 @@
+ #include "SDL_uikitevents.h"
+ #include "SDL_uikitvideo.h"
+ #include "SDL_uikitmodes.h"
++#import <objc/message.h>
+ #include "SDL_uikitwindow.h"
+ #include "SDL_uikitopengles.h"
+ 
+@@ -230,6 +231,92 @@
+     int h = (int) size.height;
+ 
+     SDL_SendWindowEvent(window, SDL_WINDOWEVENT_RESIZED, w, h);
++
++#if !TARGET_OS_MACCATALYST
++    /* iwish: force iOS to re-query prefersStatusBarHidden (=YES) now that this
++     * view controller is the window's root, so the status bar actually hides. */
++    static BOOL iwishStatusBarUpdated = NO;
++    if (!iwishStatusBarUpdated) {
++        iwishStatusBarUpdated = YES;
++        [self setNeedsStatusBarAppearanceUpdate];
++    }
++#endif
++
++#if TARGET_OS_MACCATALYST
++    /* SDL leaves the Catalyst window scene unconfigured, so the window opens
++     * near-fullscreen and the drawable runs under the title-bar buttons. Give
++     * it a sensible default size and a visible title bar (once). */
++    static BOOL iwishSceneConfigured = NO;
++    if (!iwishSceneConfigured && self.view.window.windowScene != nil) {
++        iwishSceneConfigured = YES;
++        UIWindowScene *ws = self.view.window.windowScene;
++        ws.titlebar.titleVisibility = UITitlebarTitleVisibilityVisible;
++        ws.titlebar.separatorStyle = UITitlebarSeparatorStyleLine;
++        /* The brown SDL surface fills the whole window (it's the root view), so
++         * the only way to get a standard-looking title bar is to make the
++         * underlying NSWindow's title bar OPAQUE so it covers the brown. NSWindow
++         * is AppKit (not in the Catalyst SDK) but lives in-process; reach it via
++         * the runtime. */
++        Class NSApplicationCls = NSClassFromString(@"NSApplication");
++        if (NSApplicationCls != nil) {
++            id nsApp = ((id(*)(id,SEL))objc_msgSend)(NSApplicationCls, @selector(sharedApplication));
++            id wins = nsApp ? ((id(*)(id,SEL))objc_msgSend)(nsApp, @selector(windows)) : nil;
++            for (id w in wins) {
++                NSUInteger sm = ((NSUInteger(*)(id,SEL))objc_msgSend)(w, @selector(styleMask));
++                ((void(*)(id,SEL,BOOL))objc_msgSend)(w, @selector(setTitlebarAppearsTransparent:), NO);
++                /* Clear NSWindowStyleMaskFullSizeContentView (0x8000) so the brown
++                 * content view sits BELOW the title bar instead of under it, and
++                 * the standard title-bar material shows. */
++                ((void(*)(id,SEL,NSUInteger))objc_msgSend)(w, @selector(setStyleMask:), sm & ~(NSUInteger)0x8000);
++            }
++        }
++        /* Lock the scene to EXACTLY the iWish canvas size (min == max) so the
++         * scene's coordinate space matches the window and de1app's UI fills it
++         * (otherwise the coord space stays larger and de1app renders at ~77%).
++         * Default 1280x800; IWISH_SCREEN_W/H overrides for resolution testing. */
++        const char *iwWs = SDL_getenv("IWISH_SCREEN_W"); const char *iwHs = SDL_getenv("IWISH_SCREEN_H");
++        CGFloat iwW = (iwWs && SDL_atoi(iwWs) > 0) ? SDL_atoi(iwWs) : 1280;
++        CGFloat iwH = (iwHs && SDL_atoi(iwHs) > 0) ? SDL_atoi(iwHs) : 800;
++        ws.sizeRestrictions.minimumSize = CGSizeMake(iwW, iwH);
++        ws.sizeRestrictions.maximumSize = CGSizeMake(iwW, iwH);
++        if (@available(iOS 16.0, *)) {
++            /* Choose which display to open on.  Prefer the MAIN display (the one
++             * UIScreen.mainScreen maps to, where SDL computed the window's scale) so
++             * the window's backing scale matches SDL's render scale -- otherwise the
++             * UI lands in the top-left QUADRANT (a 1x drawable composited into a 2x
++             * layer).  BUT if the requested iWish canvas (iwW x iwH) doesn't fit the
++             * main display (e.g. a 1536-tall iPad canvas on a 1440-tall ultrawide),
++             * pick the largest NON-built-in display that does fit.  We skip the
++             * built-in because here it is 2x Retina while the externals are 1x like
++             * the main -- landing the 1x-rendered window on the 2x built-in would
++             * reintroduce the quadrant.  On a real iPad there's a single screen and
++             * this whole block is moot.  CGDisplayBounds is the global top-left
++             * (points) coordinate space. */
++            CGDirectDisplayID target = CGMainDisplayID();
++            CGRect mb = CGDisplayBounds(target);
++            if (mb.size.height < iwH || mb.size.width < iwW) {
++                uint32_t n = 0;
++                CGGetActiveDisplayList(0, NULL, &n);
++                if (n > 16) { n = 16; }
++                CGDirectDisplayID ids[16];
++                CGGetActiveDisplayList(n, ids, &n);
++                double bestArea = -1;
++                for (uint32_t i = 0; i < n; i++) {
++                    if (CGDisplayIsBuiltin(ids[i])) { continue; }
++                    CGRect db = CGDisplayBounds(ids[i]);
++                    if (db.size.height < iwH || db.size.width < iwW) { continue; }
++                    double a = db.size.width * db.size.height;
++                    if (a > bestArea) { bestArea = a; target = ids[i]; }
++                }
++            }
++            CGRect b = CGDisplayBounds(target);
++            CGRect frame = CGRectMake(b.origin.x + 80, b.origin.y + 80, iwW, iwH);
++            UIWindowSceneGeometryPreferencesMac *pref =
++                [[UIWindowSceneGeometryPreferencesMac alloc] initWithSystemFrame:frame];
++            [ws requestGeometryUpdateWithPreferences:pref errorHandler:nil];
++        }
++    }
++#endif
+ }
+ 
+ #if !TARGET_OS_TV
+@@ -240,8 +327,10 @@
+ 
+ - (BOOL)prefersStatusBarHidden
+ {
+-    BOOL hidden = (window->flags & (SDL_WINDOW_FULLSCREEN|SDL_WINDOW_BORDERLESS)) != 0;
+-    return hidden;
++    /* iwish: de1app is a fullscreen tablet app -> always hide the iOS status
++     * bar (the app-level UIStatusBarHidden Info.plist key is ignored on modern
++     * iOS; the status bar is view-controller-driven). */
++    return YES;
+ }
+ 
+ - (BOOL)prefersHomeIndicatorAutoHidden

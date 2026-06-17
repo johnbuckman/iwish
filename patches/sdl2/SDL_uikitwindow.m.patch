@@ -1,0 +1,41 @@
+--- a/src/video/uikit/SDL_uikitwindow.m	2025-01-01 16:48:45
++++ b/src/video/uikit/SDL_uikitwindow.m	2026-06-16 09:34:48
+@@ -126,6 +126,20 @@
+         }
+     }
+ #endif /* !TARGET_OS_TV */
++
++#if TARGET_OS_MACCATALYST
++    /* iwish: displaydata.uiscreen is the (possibly transposed) Mac display, not
++     * the window we actually present (sized via the scene's systemFrame in
++     * SDL_uikitviewcontroller.m). Pin the SDL view + window logical size to the
++     * iWish canvas (default 1280x800, IWISH_SCREEN_W/H override) so window->w/h,
++     * the renderer/drawable, and SdlTk's surface/screen are all consistent —
++     * otherwise SdlTk's "screen" becomes the raw display and de1app's UI sits in
++     * a corner. */
++    { const char *iwWs = SDL_getenv("IWISH_SCREEN_W"); const char *iwHs = SDL_getenv("IWISH_SCREEN_H");
++      width  = (iwWs && SDL_atoi(iwWs) > 0) ? SDL_atoi(iwWs) : 1280;
++      height = (iwHs && SDL_atoi(iwHs) > 0) ? SDL_atoi(iwHs) : 800;
++      frame  = CGRectMake(0, 0, width, height); }
++#endif
+ 
+ #if 0 /* Don't set the x/y position, it's already placed on a display */
+     window->x = 0;
+@@ -207,7 +221,17 @@
+ 
+         /* ignore the size user requested, and make a fullscreen window */
+         /* !!! FIXME: can we have a smaller view? */
++#if TARGET_OS_MACCATALYST
++        /* iwish: data.uiscreen.bounds is a bogus transposed display size on
++         * Catalyst (e.g. 1440x3440); using it makes SdlTk's logical screen that
++         * size, so de1app's fixed 1280x800 UI sits in a corner instead of
++         * filling the window. Pin the window (hence SdlTk's screen, hence
++         * winfo screenwidth/height) to 1280x800 to match the systemFrame set in
++         * SDL_uikitviewcontroller.m. */
++        uiwindow = [[SDL_uikitwindow alloc] initWithFrame:CGRectMake(0, 0, 1280, 800)];
++#else
+         uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
++#endif
+ 
+         /* put the window on an external display if appropriate. */
+         if (data.uiscreen != [UIScreen mainScreen]) {

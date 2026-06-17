@@ -1,0 +1,18 @@
+diff --git a/jni/sdl2tk/sdl/SdlTkGfx.c b/jni/sdl2tk/sdl/SdlTkGfx.c
+index e43c9b64..18f9880d 100644
+--- a/jni/sdl2tk/sdl/SdlTkGfx.c
++++ b/jni/sdl2tk/sdl/SdlTkGfx.c
+@@ -886,6 +886,13 @@ SdlTkGfxUpdateRegion(SDL_Renderer *rend, SDL_Texture *tex,
+     long i;
+     int count = 0;
+ 
++    /* iwish: the desktop (root) area is not always re-marked dirty after expose,
++     * so sync the whole surface to the texture each present to keep the
++     * background colour correct. */
++    if (surf && tex) {
++	SDL_UpdateTexture(tex, NULL, surf->pixels, surf->pitch);
++    }
++
+     if (SdlTkX.draw_later & SDLTKX_RENDCLR2) {
+ 	SdlTkX.draw_later &= ~SDLTKX_RENDCLR2;
+ 	SDL_SetRenderDrawColor(SdlTkX.sdlrend, 0, 0, 0, 255);

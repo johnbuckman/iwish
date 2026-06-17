@@ -1,0 +1,247 @@
+diff --git a/jni/sdl2tk/sdl/SdlTkInt.c b/jni/sdl2tk/sdl/SdlTkInt.c
+index 47c3aadb..e460ebf6 100644
+--- a/jni/sdl2tk/sdl/SdlTkInt.c
++++ b/jni/sdl2tk/sdl/SdlTkInt.c
+@@ -796,29 +796,35 @@ MkTransChars(XKeyEvent *ev)
+ 	ev->nbytes = 1;
+ 	return 1;
+     }
++    {
++    /* Shift maps the number row and symbol keys to their shifted glyphs
++     * (US/ANSI layout). Caps Lock must NOT shift these (only letters), so
++     * test ShiftMask alone, not LockMask. */
++    int sh = (ev->state & ShiftMask) ? 1 : 0;
+     switch (ev->keycode) {
+-    case SDL_SCANCODE_0:		ch = '0'; break;
+-    case SDL_SCANCODE_1:		ch = '1'; break;
+-    case SDL_SCANCODE_2:		ch = '2'; break;
+-    case SDL_SCANCODE_3:		ch = '3'; break;
+-    case SDL_SCANCODE_4:		ch = '4'; break;
+-    case SDL_SCANCODE_5:		ch = '5'; break;
+-    case SDL_SCANCODE_6:		ch = '6'; break;
+-    case SDL_SCANCODE_7:		ch = '7'; break;
+-    case SDL_SCANCODE_8:		ch = '8'; break;
+-    case SDL_SCANCODE_9:		ch = '9'; break;
++    case SDL_SCANCODE_0:		ch = sh ? ')' : '0'; break;
++    case SDL_SCANCODE_1:		ch = sh ? '!' : '1'; break;
++    case SDL_SCANCODE_2:		ch = sh ? '@' : '2'; break;
++    case SDL_SCANCODE_3:		ch = sh ? '#' : '3'; break;
++    case SDL_SCANCODE_4:		ch = sh ? '$' : '4'; break;
++    case SDL_SCANCODE_5:		ch = sh ? '%' : '5'; break;
++    case SDL_SCANCODE_6:		ch = sh ? '^' : '6'; break;
++    case SDL_SCANCODE_7:		ch = sh ? '&' : '7'; break;
++    case SDL_SCANCODE_8:		ch = sh ? '*' : '8'; break;
++    case SDL_SCANCODE_9:		ch = sh ? '(' : '9'; break;
+     case SDL_SCANCODE_SPACE:		ch = ' '; break;
+-    case SDL_SCANCODE_COMMA:		ch = ','; break;
+-    case SDL_SCANCODE_PERIOD:		ch = '.'; break;
+-    case SDL_SCANCODE_SLASH:		ch = '/'; break;
+-    case SDL_SCANCODE_GRAVE:		ch = '`'; break;
+-    case SDL_SCANCODE_SEMICOLON:	ch = ';'; break;
+-    case SDL_SCANCODE_APOSTROPHE:	ch = '\''; break;
+-    case SDL_SCANCODE_BACKSLASH:	ch = '\\'; break;
+-    case SDL_SCANCODE_MINUS:		ch = '-'; break;
+-    case SDL_SCANCODE_EQUALS:		ch = '='; break;
+-    case SDL_SCANCODE_LEFTBRACKET:	ch = '['; break;
+-    case SDL_SCANCODE_RIGHTBRACKET:	ch = ']'; break;
++    case SDL_SCANCODE_COMMA:		ch = sh ? '<' : ','; break;
++    case SDL_SCANCODE_PERIOD:		ch = sh ? '>' : '.'; break;
++    case SDL_SCANCODE_SLASH:		ch = sh ? '?' : '/'; break;
++    case SDL_SCANCODE_GRAVE:		ch = sh ? '~' : '`'; break;
++    case SDL_SCANCODE_SEMICOLON:	ch = sh ? ':' : ';'; break;
++    case SDL_SCANCODE_APOSTROPHE:	ch = sh ? '"' : '\''; break;
++    case SDL_SCANCODE_BACKSLASH:	ch = sh ? '|' : '\\'; break;
++    case SDL_SCANCODE_MINUS:		ch = sh ? '_' : '-'; break;
++    case SDL_SCANCODE_EQUALS:		ch = sh ? '+' : '='; break;
++    case SDL_SCANCODE_LEFTBRACKET:	ch = sh ? '{' : '['; break;
++    case SDL_SCANCODE_RIGHTBRACKET:	ch = sh ? '}' : ']'; break;
++    }
+     }
+     if (ch) {
+ 	ev->trans_chars[0] = ch;
+@@ -2261,6 +2267,14 @@ doNormalKeyEvent:
+ 	    EVLOG("EV=WINDOWEVENT_SIZE_CHANGED");
+ 	    width = sdl_event->window.data1;
+ 	    height = sdl_event->window.data2;
++#if defined(__APPLE__) && defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
++	    /* iwish: keep the virtual screen at the init size (IWISH_SCREEN_W/H);
++	     * ignore window-driven resizes (the Mac window may be clamped smaller
++	     * than the requested resolution). SDL_RenderSetLogicalSize scales the
++	     * present to the real drawable, so de1app still fills the window. */
++	    width  = SdlTkX.screen->width;
++	    height = SdlTkX.screen->height;
++#endif
+ 	    if (SdlTkX.root_w) {
+ 		SDL_GetWindowSize(SdlTkX.sdlscreen, &oldw, &oldh);
+ 	    } else {
+@@ -2382,7 +2396,9 @@ doNormalKeyEvent:
+ #ifdef ANDROID
+ 				   0x00, 0x00, 0x00
+ #else
+-				   0x00, 0x4E, 0x78
++				   /* iwish desktop #004d77, natural R,G,B now that the
++				    * texture format matches the surface (no R/B swap). */
++				   0x00, 0x4D, 0x77
+ #endif
+ 				   );
+ 		if (width > oldw) {
+@@ -2955,11 +2971,14 @@ SdlTkVisRgnChanged(_Window *_w, int flags, int x, int y)
+     /* If areas of the root window were exposed, paint them now */
+     if (SdlTkX.screen_dirty_region &&
+ 	!XEmptyRegion(SdlTkX.screen_dirty_region)) {
++	/* iwish desktop colour = #004d77, natural R,G,B now that the screen
++	 * texture format matches the surface (SdlTkX.c sdltex uses fmt), so
++	 * SDL_UpdateTexture's raw copy no longer swaps R<->B. */
+ 	Uint32 pixel = SDL_MapRGB(SdlTkX.sdlsurf->format,
+ #ifdef ANDROID
+ 				  0x00, 0x00, 0x00
+ #else
+-				  0x00, 0x4E, 0x78
++				  0x00, 0x4D, 0x77
+ #endif
+ 				  );
+ 
+@@ -4415,6 +4434,81 @@ done:
+     return ret;
+ }
+ 
++#if defined(__APPLE__)
++#include <TargetConditionals.h>
++#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
++#define SDLTK_MAC_POWERINFO 1
++#include <CoreFoundation/CoreFoundation.h>
++#include <IOKit/ps/IOPowerSources.h>
++#include <IOKit/ps/IOPSKeys.h>
++
++/*
++ * On a desktop Mac (undroidwish / iWish-on-Catalyst) SDL_GetPowerInfo
++ * misreports battery -- notably a Mac with no internal battery yields a bogus
++ * low percent, which drove the de1app into its low-battery screensaver.  Query
++ * the authoritative IOKit power-source API instead: returns the real battery
++ * percentage when on battery, or 100 when plugged into AC (or there is no
++ * battery at all, i.e. a desktop Mac).  Sets *onAC and *hasBattery.
++ */
++static int
++SdlTkMacPowerInfo(int *onAC, int *hasBattery)
++{
++    int pct = -1;
++    CFTypeRef blob;
++    CFStringRef ptype;
++    CFArrayRef list;
++
++    *onAC = 0;
++    *hasBattery = 0;
++    blob = IOPSCopyPowerSourcesInfo();
++    if (blob == NULL) {
++	*onAC = 1;		/* can't tell -> assume plugged in */
++	return 100;
++    }
++    ptype = IOPSGetProvidingPowerSourceType(blob);
++    if (ptype != NULL && CFEqual(ptype, CFSTR(kIOPSACPowerValue))) {
++	*onAC = 1;
++    }
++    list = IOPSCopyPowerSourcesList(blob);
++    if (list != NULL) {
++	CFIndex i, n = CFArrayGetCount(list);
++
++	for (i = 0; i < n; i++) {
++	    CFDictionaryRef d =
++		IOPSGetPowerSourceDescription(blob, CFArrayGetValueAtIndex(list, i));
++	    CFNumberRef ncur, nmax;
++	    CFStringRef st;
++	    int cur = 0, max = 0;
++
++	    if (d == NULL) {
++		continue;
++	    }
++	    ncur = (CFNumberRef) CFDictionaryGetValue(d, CFSTR(kIOPSCurrentCapacityKey));
++	    nmax = (CFNumberRef) CFDictionaryGetValue(d, CFSTR(kIOPSMaxCapacityKey));
++	    if (ncur != NULL) CFNumberGetValue(ncur, kCFNumberIntType, &cur);
++	    if (nmax != NULL) CFNumberGetValue(nmax, kCFNumberIntType, &max);
++	    if (max > 0) {
++		pct = (cur * 100) / max;
++		*hasBattery = 1;
++	    }
++	    st = (CFStringRef) CFDictionaryGetValue(d, CFSTR(kIOPSPowerSourceStateKey));
++	    if (st != NULL && CFEqual(st, CFSTR(kIOPSACPowerValue))) {
++		*onAC = 1;
++	    }
++	    break;		/* first battery is enough */
++	}
++	CFRelease(list);
++    }
++    CFRelease(blob);
++    if (!*hasBattery) {
++	*onAC = 1;		/* no battery -> desktop on wall power */
++	pct = 100;
++    }
++    return pct;
++}
++#endif
++#endif
++
+ static int
+ PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
+ 		int objc, Tcl_Obj *const objv[])
+@@ -4427,9 +4521,32 @@ PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
+ 	Tcl_WrongNumArgs(interp, 1, objv, "");
+ 	return TCL_ERROR;
+     }
++    secs = -1;
++    pct = -1;
++#ifdef SDLTK_MAC_POWERINFO
++    {
++	int onAC = 0, hasBat = 0;
++	int real = SdlTkMacPowerInfo(&onAC, &hasBat);
++
++	if (onAC || !hasBat) {
++	    /* Plugged into power (or no battery): report full. */
++	    pct = 100;
++	    if (!hasBat) {
++		pst = SDL_POWERSTATE_NO_BATTERY;
++	    } else {
++		pst = (real >= 100) ? SDL_POWERSTATE_CHARGED : SDL_POWERSTATE_CHARGING;
++	    }
++	} else {
++	    /* Running on battery: report the real level. */
++	    pct = (real < 0) ? 100 : real;
++	    pst = SDL_POWERSTATE_ON_BATTERY;
++	}
++    }
++#else
+     SdlTkLock(NULL);
+     pst = SDL_GetPowerInfo(&secs, &pct);
+     SdlTkUnlock(NULL);
++#endif
+     Tcl_AppendElement(interp, "state");
+     switch (pst) {
+     case SDL_POWERSTATE_ON_BATTERY:
+@@ -4546,6 +4663,20 @@ SizeObjCmd(ClientData clientData, Tcl_Interp *interp,
+     return TCL_OK;
+ }
+ 
++/* iwish diagnostic: report the X virtual-screen size (SdlTkX.screen->width/height),
++ * distinct from `sdltk size` which reports the SDL window size. */
++static int
++ScreensizeObjCmd(ClientData clientData, Tcl_Interp *interp,
++		 int objc, Tcl_Obj *const objv[])
++{
++    char buffer[128];
++    sprintf(buffer, "%d %d",
++	    SdlTkX.screen ? SdlTkX.screen->width : -1,
++	    SdlTkX.screen ? SdlTkX.screen->height : -1);
++    Tcl_SetResult(interp, buffer, TCL_VOLATILE);
++    return TCL_OK;
++}
++
+ static int
+ ScreensaverObjCmd(ClientData clientData, Tcl_Interp *interp,
+ 		  int objc, Tcl_Obj *const objv[])
+@@ -4991,6 +5122,7 @@ static const TkEnsemble sdltkCmdMap[] = {
+     { "restore", RestoreObjCmd, NULL },
+     { "root", RootObjCmd, NULL },
+     { "screensaver", ScreensaverObjCmd, NULL },
++    { "screensize", ScreensizeObjCmd, NULL },
+     { "size", SizeObjCmd, NULL },
+     { "stat", StatObjCmd, NULL },
+     { "textinput", TextinputObjCmd, NULL },

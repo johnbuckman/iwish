@@ -1,0 +1,16 @@
+--- a/src/video/uikit/SDL_uikitmodes.m	2025-01-01 16:48:45
++++ b/src/video/uikit/SDL_uikitmodes.m	2026-06-12 16:15:22
+@@ -375,7 +375,13 @@
+         SDL_OnApplicationDidChangeStatusBarOrientation();
+ #endif
+ 
++#if !TARGET_OS_MACCATALYST
++        /* iwish: on Catalyst (Mac), UIScreen connect/disconnect notifications
++         * fire when the window is dragged between monitors, and SDL's
++         * UIKit_DelDisplay over-releases the display driverdata -> SIGSEGV.
++         * iWish doesn't need dynamic display reconfiguration, so don't watch. */
+         [SDL_DisplayWatch start];
++#endif
+     }
+ 
+     return 0;

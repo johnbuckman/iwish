@@ -1,0 +1,81 @@
+diff --git a/jni/sdl2tk/sdl/tkAppInit.c b/jni/sdl2tk/sdl/tkAppInit.c
+index e40eab2c..c1671941 100644
+--- a/jni/sdl2tk/sdl/tkAppInit.c
++++ b/jni/sdl2tk/sdl/tkAppInit.c
+@@ -28,6 +28,9 @@ extern Tcl_PackageInitProc Tktest_Init;
+ 
+ #ifdef PLATFORM_SDL
+ #include <SDL.h>
++#ifdef __APPLE__
++#include <TargetConditionals.h>
++#endif
+ #ifdef ANDROID
+ #include <android/log.h>
+ #undef  main
+@@ -513,6 +516,66 @@ main(
+      * the main thread, too.
+      */
+ 
++#if (defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST) || (defined(TARGET_OS_IOS) && TARGET_OS_IOS)
++    /*
++     * Launched with no script argument (Finder on Catalyst, or a real iOS
++     * device/simulator with no launch arg): run the bundled main.tcl from the
++     * app's resource directory (SDL_GetBasePath), so the .app is self-contained.
++     * The argc>=2 guard means an explicitly-passed script (e.g. the simulator
++     * `simctl launch … script.tcl`) still wins.
++     */
++    /*
++     * On a real iOS device there is no way to set TCL_LIBRARY/TK_LIBRARY in the
++     * environment before launch (Info.plist LSEnvironment only works on
++     * Catalyst).  Without them, Tcl_Init / Tk_Init can't find their script
++     * libraries and init.tcl / tk.tcl abort partway (auto_path, the min/max
++     * mathfuncs, the unknown / package-unknown handlers, and the Tk package
++     * provide never get set up).  So derive them from the bundle (SDL_GetBasePath
++     * = the .app dir; we ship the libraries at lib/tcl8.6 and lib/tk8.6) and set
++     * them here, before Tcl/Tk start.  Only set if not already set (Catalyst gets
++     * them from Info.plist).
++     */
++    {
++	char *base = SDL_GetBasePath();
++	if (base != NULL) {
++	    static char tlib[2048], klib[2048];
++	    if (getenv("TCL_LIBRARY") == NULL) {
++		snprintf(tlib, sizeof(tlib), "%slib/tcl8.6", base);
++		setenv("TCL_LIBRARY", tlib, 1);
++	    }
++	    if (getenv("TK_LIBRARY") == NULL) {
++		snprintf(klib, sizeof(klib), "%slib/tk8.6", base);
++		setenv("TK_LIBRARY", klib, 1);
++	    }
++	    SDL_free(base);
++	}
++    }
++    if (!(argc >= 2 && argv[1] != NULL && argv[1][0] != '-')) {
++	char *base = SDL_GetBasePath();
++	if (base != NULL) {
++	    static char scriptPath[2048];
++	    static char *newArgv[64];
++	    FILE *f;
++
++	    snprintf(scriptPath, sizeof(scriptPath), "%smain.tcl", base);
++	    SDL_free(base);
++	    f = fopen(scriptPath, "r");
++	    if (f != NULL) {
++		int i, n = 0;
++
++		fclose(f);
++		newArgv[n++] = argv[0];
++		newArgv[n++] = scriptPath;
++		for (i = 1; i < argc && n < 62; i++) {
++		    newArgv[n++] = argv[i];
++		}
++		newArgv[n] = NULL;
++		argv = newArgv;
++		argc = n;
++	    }
++	}
++    }
++#endif
+     startup.argc = argc;
+     startup.argv = argv;
+     if (Tcl_CreateThread(&thrId, TkMainThread, &startup,

@@ -1,0 +1,111 @@
+--- a/src/video/uikit/SDL_uikitvideo.m	2025-01-01 16:48:45
++++ b/src/video/uikit/SDL_uikitvideo.m	2026-06-16 11:31:43
+@@ -153,6 +153,78 @@
+ };
+ 
+ 
++#if TARGET_OS_MACCATALYST
++#include "../../events/SDL_mouse_c.h"
++
++/* NSCursor is AppKit -- absent from the Catalyst SDK but loaded in the Catalyst
++ * process -- so reach it via the runtime to provide real arrow/resize cursor
++ * shapes (UIPointerStyle has no resize shapes). */
++static id UIKit_NSCursorFor(SDL_SystemCursor cid)
++{
++    Class C = NSClassFromString(@"NSCursor");
++    if (C == nil) { return nil; }
++    SEL sel = @selector(arrowCursor);
++    switch (cid) {
++    case SDL_SYSTEM_CURSOR_IBEAM:     sel = @selector(IBeamCursor); break;
++    case SDL_SYSTEM_CURSOR_CROSSHAIR: sel = @selector(crosshairCursor); break;
++    case SDL_SYSTEM_CURSOR_HAND:      sel = @selector(pointingHandCursor); break;
++    case SDL_SYSTEM_CURSOR_NO:        sel = @selector(operationNotAllowedCursor); break;
++    case SDL_SYSTEM_CURSOR_SIZEWE:    sel = @selector(resizeLeftRightCursor); break;
++    case SDL_SYSTEM_CURSOR_SIZENS:    sel = @selector(resizeUpDownCursor); break;
++    case SDL_SYSTEM_CURSOR_SIZENWSE:  sel = NSSelectorFromString(@"_windowResizeNorthWestSouthEastCursor"); break;
++    case SDL_SYSTEM_CURSOR_SIZENESW:  sel = NSSelectorFromString(@"_windowResizeNorthEastSouthWestCursor"); break;
++    case SDL_SYSTEM_CURSOR_SIZEALL:   sel = NSSelectorFromString(@"_moveCursor"); break;
++    default:                          sel = @selector(arrowCursor); break;
++    }
++    if (![C respondsToSelector:sel]) {
++        /* private diagonal/move selectors may be unavailable; approximate */
++        sel = (cid == SDL_SYSTEM_CURSOR_SIZENWSE || cid == SDL_SYSTEM_CURSOR_SIZENESW)
++              ? @selector(resizeLeftRightCursor) : @selector(arrowCursor);
++    }
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
++    return [C performSelector:sel];
++#pragma clang diagnostic pop
++}
++
++static SDL_Cursor *UIKit_CreateSystemCursor(SDL_SystemCursor id)
++{
++    SDL_Cursor *cursor = (SDL_Cursor *)SDL_calloc(1, sizeof(*cursor));
++    if (cursor) { cursor->driverdata = (void *)(intptr_t)id; }
++    return cursor;
++}
++
++static void UIKit_FreeCursor(SDL_Cursor *cursor) { SDL_free(cursor); }
++
++static int UIKit_ShowCursor(SDL_Cursor *cursor)
++{
++    SDL_SystemCursor cid = cursor ? (SDL_SystemCursor)(intptr_t)cursor->driverdata
++                                  : SDL_SYSTEM_CURSOR_ARROW;
++    id nscur = UIKit_NSCursorFor(cid);
++    if (nscur) {
++        dispatch_async(dispatch_get_main_queue(), ^{
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
++            [nscur performSelector:@selector(set)];
++#pragma clang diagnostic pop
++        });
++    }
++    return 0;
++}
++
++static void UIKit_InitMouseCursor(void)
++{
++    SDL_Mouse *mouse = SDL_GetMouse();
++    mouse->CreateSystemCursor = UIKit_CreateSystemCursor;
++    mouse->ShowCursor = UIKit_ShowCursor;
++    mouse->FreeCursor = UIKit_FreeCursor;
++    if (mouse->def_cursor == NULL) {
++        mouse->def_cursor = UIKit_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW);
++        mouse->cur_cursor = mouse->def_cursor;
++    }
++}
++#endif /* TARGET_OS_MACCATALYST */
++
+ int UIKit_VideoInit(_THIS)
+ {
+     _this->gl_config.driver_loaded = 1;
+@@ -163,6 +235,9 @@
+ 
+     SDL_InitGCKeyboard();
+     SDL_InitGCMouse();
++#if TARGET_OS_MACCATALYST
++    UIKit_InitMouseCursor();
++#endif
+ 
+     return 0;
+ }
+@@ -181,10 +256,16 @@
+         /* Ignore ScreenSaver API calls if the idle timer hint has been set. */
+         /* FIXME: The idle timer hint should be deprecated for SDL 2.1. */
+         if (!SDL_GetHintBoolean(SDL_HINT_IDLE_TIMER_DISABLED, SDL_FALSE)) {
+-            UIApplication *app = [UIApplication sharedApplication];
+-
+             /* Prevent the display from dimming and going to sleep. */
+-            app.idleTimerDisabled = (_this->suspend_screensaver != SDL_FALSE);
++            BOOL disable = (_this->suspend_screensaver != SDL_FALSE);
++            /* iwish: -[UIApplication setIdleTimerDisabled:] must run on the main
++             * thread.  Tk runs on a background thread, and calling it off-main
++             * traps in FrontBoardServices (assertBarrierOnQueue).  de1app calls
++             * `screensaver off` at startup, so this is hit immediately.  Applies
++             * to the iOS Simulator + real iOS too (not just Catalyst). */
++            dispatch_async(dispatch_get_main_queue(), ^{
++                [UIApplication sharedApplication].idleTimerDisabled = disable;
++            });
+         }
+     }
+ }

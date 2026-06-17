@@ -1,0 +1,46 @@
+--- a/src/video/uikit/SDL_uikitevents.m	2025-01-01 16:48:45
++++ b/src/video/uikit/SDL_uikitevents.m	2026-06-11 17:16:25
+@@ -35,9 +35,22 @@
+ #if (__IPHONE_OS_VERSION_MAX_ALLOWED >= 140000) || (__APPLETV_OS_VERSION_MAX_ALLOWED >= 140000) || (__MAC_OS_VERSION_MAX_ALLOWED > 1500000)
+ #import <GameController/GameController.h>
+ 
+-#define ENABLE_GCKEYBOARD
++/* iwish: GameController keyboard does not reliably deliver hardware-keyboard
++ * events under Mac Catalyst (keys arrive as UIEventTypePresses but the GC
++ * keyChangedHandler never fires), and SDL_HasGCKeyboard()==YES makes the view's
++ * pressesBegan/Ended skip sending keys. Disabling it lets pressesBegan deliver
++ * keys directly. */
++/* #define ENABLE_GCKEYBOARD */
++#if TARGET_OS_MACCATALYST
++/* On Catalyst, GameController's GCMouse claims the pointer but does not reliably
++ * deliver button/motion events (same failure mode as GCKeyboard), which breaks
++ * clicking and dragging. Disable it so the mouse flows through the view's
++ * touchesBegan/Moved + pointerInteraction handlers instead. */
++/* #define ENABLE_GCMOUSE */
++#else
+ #define ENABLE_GCMOUSE
+ #endif
++#endif
+ 
+ static BOOL UIKit_EventPumpEnabled = YES;
+ 
+@@ -302,8 +315,7 @@
+ }
+ 
+ static void OnGCMouseButtonChanged(SDL_MouseID mouseID, Uint8 button, BOOL pressed)
+-{
+-    SDL_SendMouseButton(SDL_GetMouseFocus(), mouseID, pressed ? SDL_PRESSED : SDL_RELEASED, button);
++{SDL_SendMouseButton(SDL_GetMouseFocus(), mouseID, pressed ? SDL_PRESSED : SDL_RELEASED, button);
+ }
+ 
+ static void OnGCMouseConnected(GCMouse *mouse) API_AVAILABLE(macos(11.0), ios(14.0), tvos(14.0))
+@@ -335,8 +347,7 @@
+     }
+ 
+     mouse.mouseInput.mouseMovedHandler = ^(GCMouseInput *mouseInput, float deltaX, float deltaY)
+-    {
+-        if (SDL_GCMouseRelativeMode()) {
++    {        if (SDL_GCMouseRelativeMode()) {
+             SDL_SendMouseMotion(SDL_GetMouseFocus(), mouseID, 1, (int)deltaX, -(int)deltaY);
+         }
+     };

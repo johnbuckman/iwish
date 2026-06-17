@@ -1,0 +1,391 @@
+diff --git a/jni/sdl2tk/sdl/SdlTkX.c b/jni/sdl2tk/sdl/SdlTkX.c
+index abbb80fd..67020c05 100644
+--- a/jni/sdl2tk/sdl/SdlTkX.c
++++ b/jni/sdl2tk/sdl/SdlTkX.c
+@@ -4714,6 +4714,19 @@ HandleRootSize(struct RootSizeRequest *r)
+     SDL_GetWindowSize(SdlTkX.sdlscreen, &sw, &sh);
+     width = r->width;
+     height = r->height;
++#if defined(__APPLE__) && defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
++    /* iwish: keep the root a fixed virtual screen on Catalyst (default 1280x800,
++     * override via IWISH_SCREEN_W/H for resolution testing); ignore window-driven
++     * resizes so de1app's UI always fills it. The present is scaled to the real
++     * drawable via SDL_RenderSetLogicalSize. (On real iOS this block is compiled
++     * out, so the device's native screen size is used automatically.) */
++    /* Preserve the virtual-screen size established at init (from IWISH_SCREEN_W/H,
++     * default 1280x800) instead of re-reading the env or the (clamped) window —
++     * ignore window-driven resizes so the screen de1app laid out for never shrinks.
++     * The present is scaled to the real drawable via SDL_RenderSetLogicalSize. */
++    sw = width  = SdlTkX.screen->width;
++    sh = height = SdlTkX.screen->height;
++#endif
+     oldw = SdlTkX.screen->width;
+     oldh = SdlTkX.screen->height;
+     if ((width == oldw) && (height == oldh)) {
+@@ -4743,7 +4756,10 @@ HandleRootSize(struct RootSizeRequest *r)
+ #ifdef ANDROID
+ 			       SDL_PIXELFORMAT_RGB888,
+ #else
+-			       tfmt,
++			       /* iwish: match newsurf's format (pfmt, ABGR8888 on
++			        * Catalyst) so the root-resize texture doesn't
++			        * reintroduce the R<->B swap that sdltex avoids. */
++			       pfmt->format,
+ #endif
+ 			       SDL_TEXTUREACCESS_STREAMING,
+ 			       width, height);
+@@ -4817,7 +4833,7 @@ HandleRootSize(struct RootSizeRequest *r)
+ #ifdef ANDROID
+ 			   0x00, 0x00, 0x00
+ #else
+-			   0x00, 0x4E, 0x78
++			   0x77, 0x4D, 0x00 /* #004d77 */
+ #endif
+ 			   );
+ 	if (width > oldw) {
+@@ -5148,6 +5164,13 @@ SdlTkSetWindowTitle(SDL_Window *window, const char *title)
+ static void
+ HandleTextInput(struct TextInputRequest *r)
+ {
++#if defined(__APPLE__) && defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
++    /* On Catalyst the SDL view is first responder and pressesBegan delivers keys
++     * directly; do NOT activate the hidden UITextField (its space handling is
++     * buggy). Just acknowledge the request. */
++    if (r->running) { r->running = 0; SdlTkNotify(); }
++    return;
++#endif
+     if (r->op == 0) {
+ 	SDL_StopTextInput();
+     } else if (r->op == 1) {
+@@ -5923,6 +5946,18 @@ fatal:
+ #endif
+     SDL_GetDesktopDisplayMode(0, &info);
+     pfmt = SDL_AllocFormat(info.format);
++#if defined(__APPLE__) && defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
++    /* iwish: Catalyst's "desktop display mode" reports a small bogus size (the
++     * initial UIWindowScene size, ~900x640), which would clamp the window far
++     * below what de1app needs (it draws a 1280x800 UI -> right side clipped).
++     * Honor an explicit -width/-height, else ensure at least the configured
++     * size (IWISH_SCREEN_W/H, default 1280x800), and do NOT clamp down. */
++    { const char *iw = getenv("IWISH_SCREEN_W"); const char *ih = getenv("IWISH_SCREEN_H");
++      int fw = (iw && atoi(iw) > 0) ? atoi(iw) : 1280;
++      int fh = (ih && atoi(ih) > 0) ? atoi(ih) : 800;
++      if (SdlTkX.arg_width  == NULL && width  < fw) width  = fw;
++      if (SdlTkX.arg_height == NULL && height < fh) height = fh; }
++#else
+     if ((info.w > 0) && (info.h > 0)) {
+ 	if (videoFlags & SDL_WINDOW_FULLSCREEN) {
+ 	    width = info.w;
+@@ -5941,6 +5976,7 @@ fatal:
+ 	    height = info.h;
+ 	}
+     }
++#endif
+     if (SdlTkX.arg_resizable) {
+ 	if (min_w > width) {
+ 	    min_w = width;
+@@ -5981,6 +6017,18 @@ retry:
+     SDL_SetWindowMinimumSize(SdlTkX.sdlscreen, min_w, min_h);
+ #endif
+     SDL_GetWindowSize(SdlTkX.sdlscreen, &width, &height);
++#if defined(__APPLE__) && defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
++    /* iwish: make SdlTk's render surface a FIXED "virtual screen" on Catalyst
++     * (default 1280x800, IWISH_SCREEN_W/H override), decoupled from the real
++     * window/drawable. de1app draws into this surface and winfo screenwidth/height
++     * report it; SDL_RenderSetLogicalSize (below, same width/height) scales the
++     * present to fill the actual drawable and maps mouse input back. This is the
++     * size de1app auto-sizes its UI to. (On real iOS this block is compiled out,
++     * so the device's native screen size is used.) */
++    { const char *iw = getenv("IWISH_SCREEN_W"); const char *ih = getenv("IWISH_SCREEN_H");
++      width  = (iw && atoi(iw) > 0) ? atoi(iw) : 1280;
++      height = (ih && atoi(ih) > 0) ? atoi(ih) : 800; }
++#endif
+ 
+     fmt = SDL_GetWindowPixelFormat(SdlTkX.sdlscreen);
+     if (fmt == SDL_PIXELFORMAT_UNKNOWN) {
+@@ -5990,6 +6038,14 @@ retry:
+ 	 */
+ 	fmt = SDL_PIXELFORMAT_RGB888;
+     }
++#if defined(__APPLE__) && defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
++    /* iwish: SDL_GetWindowPixelFormat reports ABGR8888 on Catalyst, but the
++     * actual Metal drawable is BGRA (== SDL_PIXELFORMAT_ARGB8888).  Presenting
++     * an ABGR8888-tagged surface/texture to it swaps R<->B across the whole UI
++     * (desktop shows brown #774d00 instead of #004d77; de1app's blue flow line
++     * shows orange).  Force ARGB8888 so the byte order matches the drawable. */
++    fmt = SDL_PIXELFORMAT_ARGB8888;
++#endif
+     pfmt = SDL_AllocFormat(fmt);
+ 
+     SdlTkX.sdlsurf = SDL_CreateRGBSurface(SDL_SWSURFACE, width, height,
+@@ -6013,7 +6069,7 @@ retry:
+ 	    SDL_MapRGB(SdlTkX.sdlsurf->format, 0x00, 0x00, 0x00);
+ #else
+ 	Uint32 pixel =
+-	    SDL_MapRGB(SdlTkX.sdlsurf->format, 0x00, 0x4E, 0x78);
++	    SDL_MapRGB(SdlTkX.sdlsurf->format, 0x77, 0x4D, 0x00 /* #004d77 */);
+ #endif
+ 
+ 	SDL_FillRect(SdlTkX.sdlsurf, NULL, pixel);
+@@ -6037,6 +6093,16 @@ retry:
+ #endif
+ 	goto fatal;
+     }
++#if defined(__APPLE__) && defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
++    /* iwish: on Catalyst the Metal drawable = window points x the display's
++     * (often fractional, e.g. 1.333) backing scale, while SdlTk's surface and
++     * texture are at window-point size (width x height). Without a logical size,
++     * RenderCopy presents the texture 1:1 in the top-left of the larger drawable,
++     * so de1app fills only ~75% and leaves margins. A logical size == the screen
++     * makes SDL scale the present to fill the whole drawable (and scales mouse
++     * input to match), so the 1280x800 UI fills the window. */
++    SDL_RenderSetLogicalSize(SdlTkX.sdlrend, width, height);
++#endif
+ #ifndef ANDROID
+ #ifdef __APPLE__
+     /*
+@@ -6134,7 +6200,12 @@ ctxRetry:
+ #ifdef ANDROID
+ 				      SDL_PIXELFORMAT_RGB888,
+ #else
+-				      tfmt,
++				      /* iwish: match the screen surface's actual format
++				       * (fmt = SDL_GetWindowPixelFormat, ABGR8888 on
++				       * Catalyst/Metal) so SDL_UpdateTexture's raw copy
++				       * is byte-correct.  Using tfmt (RGB888) here was
++				       * the cause of the R<->B colour swap. */
++				      fmt,
+ #endif
+ 				      SDL_TEXTUREACCESS_STREAMING,
+ 				      width, height);
+@@ -6227,6 +6298,15 @@ ctxRetry:
+     /* See TkWinDisplayChanged(). */
+     screen->width = width;
+     screen->height = height;
++#if defined(__APPLE__) && defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
++    /* iwish: force the X screen (what winfo + dui.tcl coord scaling read) to the
++     * configured IWISH_SCREEN size, so de1app lays out at the full resolution even
++     * when the Mac window/drawable is clamped smaller. RenderSetLogicalSize scales
++     * the present to the actual drawable. */
++    { const char *iw = getenv("IWISH_SCREEN_W"); const char *ih = getenv("IWISH_SCREEN_H");
++      if (iw && atoi(iw) > 0) screen->width  = atoi(iw);
++      if (ih && atoi(ih) > 0) screen->height = atoi(ih); }
++#endif
+     xdpi = SdlTkX.arg_xdpi;
+     ydpi = SdlTkX.arg_ydpi;
+     if (xdpi == 0) {
+@@ -6593,6 +6673,195 @@ ctxRetry:
+  *----------------------------------------------------------------------
+  */
+ 
++#if defined(__APPLE__)
++#include <TargetConditionals.h>
++#endif
++#if defined(__APPLE__) && defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
++/*
++ * Mac Catalyst event-loop support.
++ *
++ * On Catalyst, AppKit (via UIKitMacHelper) owns the process main run loop.
++ * SdlTkEventThread() normally runs an infinite blocking SDL_WaitEvent loop on
++ * the main thread; on Catalyst that never returns to -[NSApplication run], so
++ * the app is flagged "not responding" (spinning beachball). Instead we hand the
++ * main thread back to the run loop and process SDL events from a per-frame
++ * CADisplayLink callback -- the pattern SDL explicitly supports (it does not
++ * exit() when SDL_main returns).  The loop body below is a copy of the body in
++ * SdlTkEventThread(), using file-scope iteration state.
++ */
++static SDL_TimerID gTimerId = 0;
++static int gSkipRefresh = 0, gTimerSlow = 0;
++
++static void
++SdlTkEventLoopBody(SDL_Event sdl_event)
++{
++    XEvent event;
++    _XSQEvent *qevent;
++    int overrun;
++    (void) overrun; (void) qevent;
++	if (sdl_event.type == SDL_APP_DIDENTERBACKGROUND) {
++	    SDL_RemoveTimer(gTimerId);
++	    gTimerId = SDL_AddTimer(20 * 1000 / SDLTK_FRAMERATE, TimerCallback,
++				   (void *) &SdlTkX.time_count);
++	    gTimerSlow = 1;
++	}
++	memset(&event, 0, sizeof (event));
++	SdlTkLock(NULL);
++	if ((sdl_event.type == SDL_USEREVENT) &&
++	    (sdl_event.user.data1 == TimerCallback) &&
++	    (sdl_event.user.data2 != NULL)) {
++	    /* Disable timer messages. */
++	    SDL_AtomicSet(&timer_enabled, 0);
++	    if (!gSkipRefresh) {
++		SdlTkScreenRefresh();
++	    }
++	    overrun = (SdlTkX.time_count - sdl_event.user.code) > 0;
++	    gSkipRefresh = !gSkipRefresh && overrun;
++	    /* Mark event to be skipped in SdlTkTranslateEvent(). */
++	    sdl_event.type = SDL_USEREVENT + 0x1000;
++#if !defined(ANDROID) && defined(SDL_KEYBOARDEVENT_HAS_RATE_AND_DELAY)
++	    /* Key repeat handling for Wayland. */
++	    if (key_rpt_state && (SdlTkX.time_count - key_rpt_time >= 0)) {
++		if (key_event.key.rate) {
++		    key_rpt_time = SdlTkX.time_count + 1000/key_event.key.rate;
++		    if (key_rpt_state > 1) {
++			SDL_SendKeyboardText(txt_event.text.text);
++		    } else {
++			SDL_SendKeyboardKey(SDL_PRESSED,
++					    key_event.key.keysym.scancode,
++					    key_event.key.rate, 0);
++		    }
++		} else {
++		    key_rpt_state = 0;
++		}
++	    }
++#endif
++	}
++#if !defined(ANDROID) && defined(SDL_KEYBOARDEVENT_HAS_RATE_AND_DELAY)
++	/* Key repeat handling for Wayland. */
++	if ((sdl_event.type == SDL_KEYDOWN) && sdl_event.key.rate &&
++	    sdl_event.key.delay && !sdl_event.key.repeat) {
++	    key_rpt_state = 1;
++	    key_event = sdl_event;
++	    key_rpt_time = SdlTkX.time_count + key_event.key.delay;
++	    if (SDL_PeepEvents(&txt_event, 1, SDL_PEEKEVENT,
++			       SDL_TEXTINPUT, SDL_TEXTINPUT) == 1) {
++		key_rpt_state = 2;
++	    }
++	} else if (key_rpt_state && (sdl_event.type == SDL_KEYUP) &&
++		   sdl_event.key.rate && sdl_event.key.delay &&
++		   !sdl_event.key.repeat) {
++	    key_rpt_state = 0;
++	}
++#endif
++	if (sdl_event.type == SDL_USEREVENT) {
++	    /*
++	     * Remote procedure call handling.
++	     */
++	    int markDone = 0;
++
++	    if ((sdl_event.user.data1 == HandlePanZoom) &&
++		(sdl_event.user.data2 != NULL)) {
++		HandlePanZoom((struct PanZoomRequest *) sdl_event.user.data2);
++		markDone = 1;
++	    } else if ((sdl_event.user.data1 == HandleRootSize) &&
++		       (sdl_event.user.data2 != NULL)) {
++		HandleRootSize((struct RootSizeRequest *)
++			       sdl_event.user.data2);
++		markDone = 1;
++#ifndef ANDROID
++	    } else if ((sdl_event.user.data1 == HandleWindowSize) &&
++		       (sdl_event.user.data2 != NULL)) {
++		HandleWindowSize((struct RootSizeRequest *)
++			       sdl_event.user.data2);
++		markDone = 1;
++	    } else if ((sdl_event.user.data1 == HandleWindowFlags) &&
++		       (sdl_event.user.data2 != NULL)) {
++		HandleWindowFlags((struct WindowFlagsRequest *)
++				  sdl_event.user.data2);
++		markDone = 1;
++#endif
++#if defined(__APPLE__) || defined(_WIN32)
++	    } else if ((sdl_event.user.data1 == HandleWindowTitle) &&
++		       (sdl_event.user.data2 != NULL)) {
++		HandleWindowTitle((struct WindowTitleRequest *)
++				  sdl_event.user.data2);
++		markDone = 1;
++	    } else if ((sdl_event.user.data1 == HandleTextInput) &&
++		       (sdl_event.user.data2 != NULL)) {
++		HandleTextInput((struct TextInputRequest *)
++				sdl_event.user.data2);
++		markDone = 1;
++#endif
++	    } else if ((sdl_event.user.data1 == HandleWarpPointer) &&
++		       (sdl_event.user.data2 != NULL)) {
++		HandleWarpPointer((struct WarpPointerRequest *)
++				  sdl_event.user.data2);
++		markDone = 1;
++	    } else if ((sdl_event.user.data1 == HandleShowPointer) &&
++		       (sdl_event.user.data2 != NULL)) {
++		HandleShowPointer((struct WarpPointerRequest *)
++				  sdl_event.user.data2);
++		markDone = 1;
++	    }
++	    if (markDone) {
++		/* Mark event to be skipped in SdlTkTranslateEvent(). */
++		sdl_event.type = SDL_USEREVENT + 0x1000;
++	    }
++	}
++	if (SdlTkTranslateEvent(&sdl_event, &event, SdlTkX.time_count)) {
++	    SdlTkQueueEvent(&event);
++	}
++	SdlTkUnlock(NULL);
++	if (gTimerSlow && (!SdlTkX.in_background ||
++			  sdl_event.type == SDL_APP_WILLENTERFOREGROUND)) {
++	    SDL_RemoveTimer(gTimerId);
++	    gTimerId = SDL_AddTimer(1000 / SDLTK_FRAMERATE, TimerCallback,
++				   (void *) &SdlTkX.time_count);
++	    gTimerSlow = 0;
++	}
++	/* Remove left over events from SdlTkX.display. */
++	Tcl_MutexLock((Tcl_Mutex *) &SdlTkX.display->qlock);
++	qevent = SdlTkX.display->head;
++	while (qevent != NULL) {
++	    _XSQEvent *next = qevent->next;
++
++	    EVLOG("RemoveEvent %d %p", qevent->event.xany.type,
++		  (void *) qevent->event.xany.window);
++	    qevent->next = SdlTkX.display->qfree;
++	    SdlTkX.display->qfree = qevent;
++	    qevent = next;
++	}
++	SdlTkX.display->head = SdlTkX.display->tail = NULL;
++	SdlTkX.display->qlen = 0;
++	Tcl_MutexUnlock((Tcl_Mutex *) &SdlTkX.display->qlock);
++}
++
++static void SDLCALL
++SdlTkCatalystTick(void *clientData)
++{
++    SDL_Event sdl_event;
++
++    /* NB: we deliberately do NOT call SDL_StartTextInput here. With the GC
++     * keyboard disabled, SDL's pressesBegan delivers every key directly as a
++     * scancode (SdlTk derives the character from the keysym). Activating text
++     * input additionally routes presses through the hidden UITextField, which
++     * on Catalyst injects a spurious Return after a Space. */
++    SDL_AtomicSet(&timer_enabled, !SdlTkX.in_background);
++    while (SDL_PollEvent(&sdl_event)) {
++        if ((sdl_event.type == SDL_USEREVENT) &&
++            (sdl_event.user.data1 == Tcl_Exit)) {
++            exit(0);
++        }
++        if (SdlTkX.sdlscreen == NULL) {
++            exit(0);
++        }
++        SdlTkEventLoopBody(sdl_event);
++    }
++}
++#endif /* TARGET_OS_MACCATALYST */
++
++
+ #ifdef __APPLE__
+ void
+ SdlTkEventThread(void)
+@@ -6675,6 +6944,18 @@ EventThread(ClientData clientData)
+      * Add all pending SDL events to the X event queues and
+      * deal with screen refresh.
+      */
++#if defined(__APPLE__) && defined(TARGET_OS_MACCATALYST) && TARGET_OS_MACCATALYST
++    /* Catalyst: drive the loop from the run loop instead of blocking it. */
++    gTimerId = timerId;
++    gSkipRefresh = skipRefresh;
++    gTimerSlow = timerSlow;
++    /* NB: text input is started from SdlTkCatalystTick once the window/view
++     * hierarchy is live (calling it here, during init, is too early -- the
++     * hidden UITextField has no window yet and can't become first responder). */
++    SDL_iPhoneSetAnimationCallback(SdlTkX.sdlscreen, 1, SdlTkCatalystTick, NULL);
++    return;
++#endif
++
+     while (1) {
+ 	_XSQEvent *qevent;
+ 

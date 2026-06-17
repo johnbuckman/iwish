@@ -1,0 +1,36 @@
+# iWish known bugs / limitations
+
+Alpha. Known rough edges:
+
+## Packaging / distribution
+- The released `iWish.app` is **unsigned**. iOS will not launch it until you
+  re-sign it with your own Apple Development certificate and a provisioning
+  profile that lists your device's UDID, and enable Developer Mode on the device.
+- No App Store / TestFlight build yet; install is via `devicectl` (or Xcode) only.
+- The build scripts have absolute paths and assumptions baked in (developed on
+  one machine); they are a recipe to adapt, not a turnkey `make`.
+
+## Runtime
+- **GCD main-thread rule:** the Tcl interpreter runs off the main thread while the
+  main thread is busy in the SDL/Tk loop, so any UIKit call from Tcl must be
+  inline or `dispatch_async` — a `dispatch_sync` to the main queue **deadlocks**
+  and the watchdog kills the app. The `borg` shim follows this; new native glue
+  must too.
+- Screen brightness set via `UIScreen.brightness` only holds while the app is
+  foregrounded; iOS may re-assert auto-brightness after backgrounding.
+- Status-bar hiding relies on a forced `setNeedsStatusBarAppearanceUpdate` after
+  the window is up (iOS 26 ignores the Info.plist `UIStatusBarHidden` key alone).
+- Non-standard screen sizes (e.g. 1194×834) have no matching skin/image dir in
+  apps that ship per-resolution art; they rescale from a base resolution at
+  runtime, which is slower on first paint.
+- Mac Catalyst on a multi-monitor Mac had display-scale-mismatch quadrant-render
+  issues; fixed by positioning the scene on `CGMainDisplayID()`, but multi-display
+  setups are under-tested.
+
+## Not yet verified on device
+- Audio output (snack / beep).
+- Software keyboard / text entry geometry.
+- The full Tcl/Tk regression suite (only the desktop UTF6 baseline is recorded).
+
+Found something? Please open an issue with the device model, iOS version, and the
+`log.txt` from the app's `Documents` container.

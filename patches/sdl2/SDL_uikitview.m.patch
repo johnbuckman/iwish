@@ -1,0 +1,177 @@
+--- a/src/video/uikit/SDL_uikitview.m	2025-01-01 16:48:45
++++ b/src/video/uikit/SDL_uikitview.m	2026-06-12 17:02:52
+@@ -92,11 +92,63 @@
+             [self addInteraction:[[UIPointerInteraction alloc] initWithDelegate:self]];
+         }
+ #endif
++
++#if TARGET_OS_MACCATALYST
++        /* iwish: trackpad / mouse-wheel scrolling. We disable GCMouse on Catalyst
++         * (it broke clicks), but SDL's only uikit wheel source IS GCMouse — so
++         * scroll was lost. A pan recognizer limited to indirect scroll types with
++         * maximumNumberOfTouches=0 fires ONLY for trackpad/wheel scroll (never for
++         * finger/click drags), and feeds SDL_SendMouseWheel. */
++        if (@available(macCatalyst 13.4, *)) {
++            UIPanGestureRecognizer *sp = [[UIPanGestureRecognizer alloc]
++                initWithTarget:self action:@selector(iwishScroll:)];
++            sp.allowedScrollTypesMask = UIScrollTypeMaskAll;
++            sp.maximumNumberOfTouches = 0;
++            [self addGestureRecognizer:sp];
++        }
++#endif
+     }
+ 
+     return self;
+ }
+ 
++#if TARGET_OS_MACCATALYST
++- (void)iwishScroll:(UIPanGestureRecognizer *)gr
++{
++    static int emittedY = 0, emittedX = 0;
++    if (gr.state == UIGestureRecognizerStateBegan) { emittedY = 0; emittedX = 0; return; }
++    if (gr.state != UIGestureRecognizerStateChanged) { return; }
++    CGPoint t = [gr translationInView:self];
++    const CGFloat TICK = 16.0;          /* px of scroll per wheel "click" */
++    int wantY = (int)(t.y / TICK), wantX = (int)(t.x / TICK);
++    /* fingers/scroll down (t.y>0) -> wheel.y>0 -> Button4 -> view earlier lines
++     * (matches macOS natural scrolling). */
++    while (emittedY < wantY) { SDL_SendMouseWheel(sdlwindow, 0, 0.0f,  1.0f, SDL_MOUSEWHEEL_NORMAL); emittedY++; }
++    while (emittedY > wantY) { SDL_SendMouseWheel(sdlwindow, 0, 0.0f, -1.0f, SDL_MOUSEWHEEL_NORMAL); emittedY--; }
++    while (emittedX < wantX) { SDL_SendMouseWheel(sdlwindow, 0,  1.0f, 0.0f, SDL_MOUSEWHEEL_NORMAL); emittedX++; }
++    while (emittedX > wantX) { SDL_SendMouseWheel(sdlwindow, 0, -1.0f, 0.0f, SDL_MOUSEWHEEL_NORMAL); emittedX--; }
++}
++#endif
++
++#if TARGET_OS_MACCATALYST
++/* iwish: on Mac Catalyst, make the SDL view itself the first responder so
++ * hardware key presses arrive via pressesBegan (correct scancodes) instead of
++ * the hidden UITextField, whose obligateForBackspace/return handling injects a
++ * spurious Return after Space. */
++- (BOOL)canBecomeFirstResponder
++{
++    return YES;
++}
++
++- (void)didMoveToWindow
++{
++    [super didMoveToWindow];
++    if (self.window != nil) {
++        [self becomeFirstResponder];
++    }
++}
++#endif
++
+ - (void)setSDLWindow:(SDL_Window *)window
+ {
+     SDL_WindowData *data = nil;
+@@ -160,9 +212,7 @@
+         CGPoint point = request.location;
+ 
+         point.x -= origin.x;
+-        point.y -= origin.y;
+-
+-        SDL_SendMouseMotion(sdlwindow, 0, 0, (int)point.x, (int)point.y);
++        point.y -= origin.y;        SDL_SendMouseMotion(sdlwindow, 0, 0, (int)point.x, (int)point.y);
+     }
+     return [UIPointerRegion regionWithRect:self.bounds identifier:nil];
+ }
+@@ -289,26 +339,33 @@
+         if (@available(iOS 13.4, *)) {
+             if (touch.type == UITouchTypeIndirectPointer) {
+                 if (!SDL_HasGCMouse()) {
++                    /* On release, event.buttonMask has the released button's bit
++                     * CLEARED, so testing "buttonMask & SDL_BUTTON(i)" never
++                     * fired and the release was lost (the drag never ended).
++                     * Release any button SDL still holds that is no longer in
++                     * the mask (the press/release delta). */
++                    Uint32 sdlState = SDL_GetMouseState(NULL, NULL);
+                     int i;
+ 
+                     for (i = 1; i <= MAX_MOUSE_BUTTONS; ++i) {
+-                        if (event.buttonMask & SDL_BUTTON(i)) {
+-                            Uint8 button;
++                        Uint8 button;
+ 
+-                            switch (i) {
+-                            case 1:
+-                                button = SDL_BUTTON_LEFT;
+-                                break;
+-                            case 2:
+-                                button = SDL_BUTTON_RIGHT;
+-                                break;
+-                            case 3:
+-                                button = SDL_BUTTON_MIDDLE;
+-                                break;
+-                            default:
+-                                button = (Uint8)i;
+-                                break;
+-                            }
++                        switch (i) {
++                        case 1:
++                            button = SDL_BUTTON_LEFT;
++                            break;
++                        case 2:
++                            button = SDL_BUTTON_RIGHT;
++                            break;
++                        case 3:
++                            button = SDL_BUTTON_MIDDLE;
++                            break;
++                        default:
++                            button = (Uint8)i;
++                            break;
++                        }
++                        if ((sdlState & SDL_BUTTON(button)) &&
++                            !(event.buttonMask & SDL_BUTTON(i))) {
+                             SDL_SendMouseButton(sdlwindow, 0, SDL_RELEASED, button);
+                         }
+                     }
+@@ -349,7 +406,21 @@
+ #if !TARGET_OS_TV && defined(__IPHONE_13_4)
+         if (@available(iOS 13.4, *)) {
+             if (touch.type == UITouchTypeIndirectPointer) {
+-                /* Already handled in pointerInteraction callback */
++#if TARGET_OS_MACCATALYST
++                /* On Catalyst, UIPointerInteraction's regionForRequest fires
++                 * only for hover (button up); during a button-held drag it does
++                 * NOT fire, so the drag motion would be lost and window drag/
++                 * resize wouldn't work. Send the motion here (same coordinate
++                 * math as the pointerInteraction callback) so drags track. */
++                if (!SDL_GCMouseRelativeMode()) {
++                    CGPoint origin = self.bounds.origin;
++                    CGPoint point = [touch locationInView:self];
++                    point.x -= origin.x;
++                    point.y -= origin.y;
++                    SDL_SendMouseMotion(sdlwindow, 0, 0, (int)point.x, (int)point.y);
++                }
++#endif
++                /* Already handled in pointerInteraction callback (hover) */
+                 handled = YES;
+             }
+         }
+@@ -416,6 +487,26 @@
+ {
+     if (!SDL_HasGCKeyboard()) {
+         for (UIPress *press in presses) {
++#if TARGET_OS_MACCATALYST
++            /* UIKit additionally delivers a UIPressTypeSelect (press.key == nil)
++             * for Space/Return as a "primary action"; scancodeFromPress would map
++             * it to a spurious Return. Only handle real keyboard-key presses. */
++            if (press.key == nil) { continue; }
++            /* Reflect this press's modifier flags into SDL's mod state so
++             * shifted characters (Shift+= -> +, Shift+1 -> !, etc.) are produced
++             * even when the modifier arrives only as a flag on the key press
++             * rather than as a separate modifier key press. */
++            {
++                UIKeyModifierFlags mf = press.key.modifierFlags;
++                SDL_Keymod mod = KMOD_NONE;
++                if (mf & UIKeyModifierShift)      { mod |= KMOD_LSHIFT; }
++                if (mf & UIKeyModifierControl)    { mod |= KMOD_LCTRL; }
++                if (mf & UIKeyModifierAlternate)  { mod |= KMOD_LALT; }
++                if (mf & UIKeyModifierCommand)    { mod |= KMOD_LGUI; }
++                if (mf & UIKeyModifierAlphaShift) { mod |= KMOD_CAPS; }
++                SDL_SetModState(mod);
++            }
++#endif
+             SDL_Scancode scancode = [self scancodeFromPress:press];
+             SDL_SendKeyboardKey(SDL_PRESSED, scancode);
+         }
