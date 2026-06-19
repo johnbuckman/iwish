@@ -24,6 +24,7 @@
  */
 
 #include <tcl.h>
+#include <sys/sysctl.h>
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -138,11 +139,37 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
     if (strcmp(sub, "osbuildinfo") == 0) {
         /* Read inline (UIDevice is safe off-main); do NOT dispatch_sync -- that
          * deadlocks the Tcl thread during boot. */
-        NSString *sys = [NSString stringWithFormat:@"%@ %@",
-                         [UIDevice currentDevice].systemName,
-                         [UIDevice currentDevice].systemVersion];
-        Tcl_SetObjResult(ip, Tcl_NewStringObj([[NSString stringWithFormat:
-            @"PRODUCT {iWish} RELEASE {%@} MODEL {Mac Catalyst}", sys] UTF8String], -1));
+        NSString *rel = [UIDevice currentDevice].systemVersion;
+
+        /* Real hardware model so callers can tell iOS (iPad../iPhone..) from Mac
+         * Catalyst (Mac..). Compile-time per target -- one dylib is built each.
+         * NB: [UIDevice model] LIES on Catalyst (returns "iPad"), so use sysctl. */
+        char modbuf[256] = {0};
+        size_t mlen = sizeof(modbuf);
+#if TARGET_OS_MACCATALYST
+        sysctlbyname("hw.model", modbuf, &mlen, NULL, 0);          /* Mac16,12 */
+#elif TARGET_OS_SIMULATOR
+        const char *simid = getenv("SIMULATOR_MODEL_IDENTIFIER");  /* iPad13,1 */
+        if (simid) { strlcpy(modbuf, simid, sizeof(modbuf)); }
+#else
+        sysctlbyname("hw.machine", modbuf, &mlen, NULL, 0);        /* iPad13,1 */
+#endif
+        NSString *model = [NSString stringWithUTF8String:
+                           (modbuf[0] ? modbuf : "Apple")];
+
+        /* Fill the standard (Android-shaped) osbuildinfo keys with real Apple
+         * values -- no non-standard "borg platform"/"os" key. de1app reads:
+         *   manufacturer "Apple"  -> Apple
+         *   product      "iWish"  -> the iWish build (macOS desktop: "undroidwish")
+         *   model        iPad../iPhone.. -> iOS;  Mac.. -> Catalyst */
+        NSString *result = [NSString stringWithFormat:
+            @"manufacturer Apple brand Apple product iWish "
+             "model %@ device %@ board %@ hardware %@ cpu_abi arm64 cpu_abi2 {} "
+             "version.codename REL version.release {%@} version.sdk 0 "
+             "fingerprint {Apple/iWish/%@:%@/0:user/release-keys} "
+             "serial unknown tags release-keys type user radio {}",
+            model, model, model, model, rel, model, rel];
+        Tcl_SetObjResult(ip, Tcl_NewStringObj([result UTF8String], -1));
         return TCL_OK;
     }
 
