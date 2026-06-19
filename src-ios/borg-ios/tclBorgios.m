@@ -24,7 +24,11 @@
  */
 
 #include <tcl.h>
+#include <string.h>
 #include <sys/sysctl.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netinet/in.h>
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -234,12 +238,165 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
         return TCL_OK;
     }
 
-    /* Android-only concepts: accept and no-op so the app keeps running. */
+    /* ---- ported from the macOS borg (tkBorgOSX.c): native iOS impls ---- */
+
+    if (strcmp(sub, "vibrate") == 0) {              /* duration arg ignored on iOS */
+        onMain(^{ AudioServicesPlaySystemSound(kSystemSoundID_Vibrate); });
+        return TCL_OK;
+    }
+
+    if (strcmp(sub, "stopspeak") == 0 || strcmp(sub, "endspeak") == 0) {
+        onMain(^{ if (gSpeech) { [gSpeech stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; } });
+        return TCL_OK;
+    }
+
+    if (strcmp(sub, "isspeaking") == 0) {
+        Tcl_SetObjResult(ip, Tcl_NewIntObj((gSpeech && gSpeech.isSpeaking) ? 1 : 0));
+        return TCL_OK;
+    }
+
+    if (strcmp(sub, "trace") == 0) {                /* borg trace message script */
+        if (objc != 4) { Tcl_WrongNumArgs(ip, 2, objv, "message script"); return TCL_ERROR; }
+        return Tcl_EvalObjEx(ip, objv[3], 0);
+    }
+
+    if (strcmp(sub, "keyboardinfo") == 0) {
+        Tcl_SetObjResult(ip, Tcl_NewStringObj("keyboard qwerty hidden 1 hardhidden 1", -1));
+        return TCL_OK;
+    }
+
+    if (strcmp(sub, "tetherinfo") == 0) {
+        Tcl_SetObjResult(ip, Tcl_NewStringObj("active {} available {} error {}", -1));
+        return TCL_OK;
+    }
+
+    if (strcmp(sub, "usbpermission") == 0) {        /* no user USB on iOS -> granted */
+        Tcl_SetObjResult(ip, Tcl_NewIntObj(1));
+        return TCL_OK;
+    }
+
+    if (strcmp(sub, "systemproperties") == 0) {     /* borg systemproperties ?name? */
+        if (objc >= 3) {
+            char buf[1024]; size_t n = sizeof(buf);
+            if (sysctlbyname(Tcl_GetString(objv[2]), buf, &n, NULL, 0) == 0) {
+                Tcl_SetObjResult(ip, Tcl_NewStringObj(buf, -1));
+            }
+        } else {
+            char buf[256]; size_t n;
+            Tcl_Obj *l = Tcl_NewListObj(0, NULL);
+            const char *names[] = { "kern.ostype", "kern.osrelease",
+                                    "kern.osproductversion", "hw.machine", NULL };
+            for (int i = 0; names[i]; i++) {
+                n = sizeof(buf);
+                if (sysctlbyname(names[i], buf, &n, NULL, 0) == 0) {
+                    Tcl_ListObjAppendElement(NULL, l, Tcl_NewStringObj(names[i], -1));
+                    Tcl_ListObjAppendElement(NULL, l, Tcl_NewStringObj(buf, -1));
+                }
+            }
+            Tcl_SetObjResult(ip, l);
+        }
+        return TCL_OK;
+    }
+
+    if (strcmp(sub, "osenvironment") == 0) {        /* borg osenvironment op */
+        if (objc < 3) return TCL_OK;
+        const char *o = Tcl_GetString(objv[2]);
+        NSString *home = NSHomeDirectory();
+        NSString *docs = [home stringByAppendingPathComponent:@"Documents"];
+        NSString *res = @"";
+        if (!strcmp(o, "datadir") || !strcmp(o, "externalstoragedir") ||
+            !strcmp(o, "externalstoragepublicdir")) res = docs;
+        else if (!strcmp(o, "downloadcachedir")) res = [home stringByAppendingPathComponent:@"Library/Caches"];
+        else if (!strcmp(o, "externalstoragestate")) res = @"mounted";
+        else if (!strcmp(o, "rootdir")) res = @"/";
+        else if (!strcmp(o, "isexternalstorageemulated") ||
+                 !strcmp(o, "isexternalstorageremovable")) res = @"0";
+        Tcl_SetObjResult(ip, Tcl_NewStringObj([res UTF8String], -1));
+        return TCL_OK;
+    }
+
+    if (strcmp(sub, "networkinfo") == 0) {          /* wifi / none */
+        struct ifaddrs *ifap = NULL; const char *r = "none";
+        if (getifaddrs(&ifap) == 0) {
+            for (struct ifaddrs *i = ifap; i; i = i->ifa_next) {
+                if (!i->ifa_addr || i->ifa_addr->sa_family != AF_INET) continue;
+                if (!(i->ifa_flags & IFF_UP) || !(i->ifa_flags & IFF_RUNNING) ||
+                    (i->ifa_flags & IFF_LOOPBACK)) continue;
+                r = "wifi"; break;
+            }
+            freeifaddrs(ifap);
+        }
+        Tcl_SetObjResult(ip, Tcl_NewStringObj(r, -1));
+        return TCL_OK;
+    }
+
+    if (strcmp(sub, "sharedpreferences") == 0) {    /* file op ?key value? -> NSUserDefaults */
+        if (objc < 4) { Tcl_WrongNumArgs(ip, 2, objv, "file op ?key value?"); return TCL_ERROR; }
+        NSString *suite = [@"borg." stringByAppendingString:
+            [NSString stringWithUTF8String:Tcl_GetString(objv[2])]];
+        const char *op = Tcl_GetString(objv[3]);
+        NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+        NSDictionary *cur = [ud persistentDomainForName:suite];
+        NSMutableDictionary *dom = cur ? [cur mutableCopy] : [NSMutableDictionary dictionary];
+        NSString *key = (objc > 4) ? [NSString stringWithUTF8String:Tcl_GetString(objv[4])] : nil;
+
+        if (strncmp(op, "get", 3) == 0) {
+            if (objc != 6) { Tcl_WrongNumArgs(ip, 2, objv, "file getX key default"); return TCL_ERROR; }
+            id v = key ? dom[key] : nil;
+            Tcl_SetObjResult(ip, v ? Tcl_NewStringObj([[v description] UTF8String], -1) : objv[5]);
+        } else if (strncmp(op, "set", 3) == 0) {
+            if (objc != 6) { Tcl_WrongNumArgs(ip, 2, objv, "file setX key value"); return TCL_ERROR; }
+            dom[key] = [NSString stringWithUTF8String:Tcl_GetString(objv[5])];
+            [ud setPersistentDomain:dom forName:suite];
+            Tcl_SetObjResult(ip, objv[5]);
+        } else if (strcmp(op, "remove") == 0) {
+            if (key) { [dom removeObjectForKey:key]; [ud setPersistentDomain:dom forName:suite]; }
+        } else if (strcmp(op, "clear") == 0) {
+            [ud removePersistentDomainForName:suite];
+        } else if (strcmp(op, "keys") == 0) {
+            Tcl_Obj *l = Tcl_NewListObj(0, NULL);
+            for (NSString *k in dom) {
+                Tcl_ListObjAppendElement(NULL, l, Tcl_NewStringObj([k UTF8String], -1));
+            }
+            Tcl_SetObjResult(ip, l);
+        } else if (strcmp(op, "all") == 0 || strcmp(op, "alltypes") == 0) {
+            int types = (strcmp(op, "alltypes") == 0);
+            Tcl_Obj *l = Tcl_NewListObj(0, NULL);
+            for (NSString *k in dom) {
+                Tcl_ListObjAppendElement(NULL, l, Tcl_NewStringObj([k UTF8String], -1));
+                NSString *val = [dom[k] description];
+                if (types) {
+                    Tcl_Obj *p = Tcl_NewListObj(0, NULL);
+                    Tcl_ListObjAppendElement(NULL, p, Tcl_NewStringObj("string", -1));
+                    Tcl_ListObjAppendElement(NULL, p, Tcl_NewStringObj([val UTF8String], -1));
+                    Tcl_ListObjAppendElement(NULL, l, p);
+                } else {
+                    Tcl_ListObjAppendElement(NULL, l, Tcl_NewStringObj([val UTF8String], -1));
+                }
+            }
+            Tcl_SetObjResult(ip, l);
+        }
+        return TCL_OK;
+    }
+
+    /* Android-only / not-applicable on iOS: accept and no-op (matches the macOS
+     * borg's stubs) so the app keeps running. */
     if (strcmp(sub, "screenorientation") == 0 || strcmp(sub, "systemui") == 0 ||
         strcmp(sub, "spinner") == 0 || strcmp(sub, "activity") == 0 ||
         strcmp(sub, "sensor") == 0 || strcmp(sub, "notification") == 0 ||
-        strcmp(sub, "shortcut") == 0 || strcmp(sub, "networkinfo") == 0 ||
-        strcmp(sub, "bluetooth") == 0) {
+        strcmp(sub, "shortcut") == 0 || strcmp(sub, "bluetooth") == 0 ||
+        strcmp(sub, "alarm") == 0 || strcmp(sub, "broadcast") == 0 ||
+        strcmp(sub, "camera") == 0 || strcmp(sub, "cancel") == 0 ||
+        strcmp(sub, "content") == 0 || strcmp(sub, "location") == 0 ||
+        strcmp(sub, "ndefformat") == 0 || strcmp(sub, "ndefread") == 0 ||
+        strcmp(sub, "ndefwrite") == 0 || strcmp(sub, "onintent") == 0 ||
+        strcmp(sub, "packageinfo") == 0 || strcmp(sub, "phoneinfo") == 0 ||
+        strcmp(sub, "providerinfo") == 0 || strcmp(sub, "queryactivities") == 0 ||
+        strcmp(sub, "querybroadcastreceivers") == 0 || strcmp(sub, "queryconsts") == 0 ||
+        strcmp(sub, "queryfeatures") == 0 || strcmp(sub, "queryfields") == 0 ||
+        strcmp(sub, "queryservices") == 0 || strcmp(sub, "sendsms") == 0 ||
+        strcmp(sub, "speechrecognition") == 0 || strcmp(sub, "usbdevices") == 0 ||
+        strcmp(sub, "withdraw") == 0) {
         return TCL_OK;
     }
 
