@@ -112,11 +112,13 @@ tree. The iWish changes are also marked inline with `iwish:` comments.)
    — needs an Apple Development cert + a provisioning profile that includes the
    device UDID.
 
-The app icon is in [`assets/iwish-icon-1024.png`](assets/iwish-icon-1024.png)
-(the iWish apple + Tcl-feather mark). `scripts/build-icon.sh` compiles it with
-`actool` into an `AppIcon` asset catalog (`Assets.car` + `AppIcon*.png`);
-reference `CFBundleIconName AppIcon` in your `Info.plist`. iOS icons must be a
-single opaque 1024×1024 image — iOS applies its own rounded-corner mask.
+The app icon master is [`assets/AppIcon.icns`](assets/AppIcon.icns) (the iWish
+apple + Tcl-feather mark); [`assets/iwish-icon-1024.png`](assets/iwish-icon-1024.png)
+is its 1024×1024 opaque export for the build. `scripts/build-icon.sh` compiles
+the PNG with `actool` into an `AppIcon` asset catalog (`Assets.car` +
+`AppIcon*.png`); reference `CFBundleIconName AppIcon` in your `Info.plist`. iOS
+icons must be a single opaque 1024×1024 image — iOS applies its own
+rounded-corner mask.
 
 ## Built-in Unix-style commands
 
