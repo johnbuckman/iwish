@@ -157,18 +157,24 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
         NSString *model = [NSString stringWithUTF8String:
                            (modbuf[0] ? modbuf : "Apple")];
 
+        /* product = the friendly Apple product name, derived from the model. */
+        NSString *product;
+        if ([model hasPrefix:@"iPad"])        product = @"iPad";
+        else if ([model hasPrefix:@"iPhone"]) product = @"iPhone";
+        else if ([model hasPrefix:@"iPod"])   product = @"iPod";
+        else                                  product = @"Mac";
+
         /* Fill the standard (Android-shaped) osbuildinfo keys with real Apple
-         * values -- no non-standard "borg platform"/"os" key. de1app reads:
-         *   manufacturer "Apple"  -> Apple
-         *   product      "iWish"  -> the iWish build (macOS desktop: "undroidwish")
-         *   model        iPad../iPhone.. -> iOS;  Mac.. -> Catalyst */
+         * values. de1app reads: manufacturer "Apple"; product the friendly name
+         * (iPad/iPhone/iPod/Mac); model the real id (iPad14,3 -> iOS, Mac.. ->
+         * Catalyst). Platform detection uses manufacturer + model. */
         NSString *result = [NSString stringWithFormat:
-            @"manufacturer Apple brand Apple product iWish "
+            @"manufacturer Apple brand Apple product %@ "
              "model %@ device %@ board %@ hardware %@ cpu_abi arm64 cpu_abi2 {} "
              "version.codename REL version.release {%@} version.sdk 0 "
-             "fingerprint {Apple/iWish/%@:%@/0:user/release-keys} "
+             "fingerprint {Apple/%@/%@:%@/0:user/release-keys} "
              "serial unknown tags release-keys type user radio {}",
-            model, model, model, model, rel, model, rel];
+            product, model, model, model, model, rel, product, model, rel];
         Tcl_SetObjResult(ip, Tcl_NewStringObj([result UTF8String], -1));
         return TCL_OK;
     }
