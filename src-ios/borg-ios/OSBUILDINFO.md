@@ -1,10 +1,10 @@
 # `borg osbuildinfo` — platform identification
 
 The iWish borg (`tclBorgios.m`) implements `borg osbuildinfo`, which returns a
-flat Tcl dict modeled on Android's `android.os.Build.*`. Rather than adding a
-non-standard `borg platform` subcommand or a custom key, **every AndroWish-family
+flat Tcl dict modeled on Android's `android.os.Build.*`. **Every AndroWish-family
 build fills these standard keys with real values for its platform**, so callers
-(e.g. de1app) can identify the platform from the existing keys alone.
+(e.g. de1app) can identify the platform from the existing keys alone — no extra
+or custom key is added.
 
 This file documents the contract across all builds so the iWish, undroidwish
 (macOS desktop), and Android implementations stay consistent.
@@ -52,9 +52,8 @@ Resulting matrix:
 
 ## Rationale / gotchas
 
-- **No `borg platform`, no custom `os` key** — only the standard `osbuildinfo`
-  keys. (`borg platform` was a non-standard de1app/iWish extension that has been
-  removed; relying on it was fragile because *which* borg is loaded varied.)
+- **Standard `osbuildinfo` keys only** — no extra/custom key is added; the
+  platform is read entirely from the values above.
 - **`product` carries the build identity** (`undroidwish` vs `iWish`). This is the
   one slightly-conventional use, and it is necessary: Catalyst-iWish and
   desktop-undroidwish run on **identical Mac hardware** (same `model`,
