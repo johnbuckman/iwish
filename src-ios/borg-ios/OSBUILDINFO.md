@@ -15,7 +15,7 @@ This file documents the contract across all builds so the iWish, undroidwish
 |---|---|---|---|---|---|
 | `manufacturer` | device maker (`Teclast`) | `Apple` | `Apple` | `Apple` | `Apple` |
 | `brand` | device brand | `Apple` | `Apple` | `Apple` | `Apple` |
-| `product` | build product (`M50Mini`) | `undroidwish` | `iWish` | `iWish` | `iWish` |
+| `product` | build product (`M50Mini`) | `MacBook Air` (`system_profiler`) | `iPad` / `iPhone` | `iPad` / `iPhone` | `Mac` |
 | `model` | `M50Mini` | `Mac16,12` (`hw.model`) | `iPad13,1` (`hw.machine`) | `iPad13,1` (`SIMULATOR_MODEL_IDENTIFIER`) | `Mac16,12` (`hw.model`) |
 | `device` | `M50Mini` | = model | = model | = model | = model |
 | `cpu_abi` | `arm64-v8a` | `arm64` (`hw.machine`) | `arm64` | `arm64` | `arm64` |
@@ -33,12 +33,10 @@ This file documents the contract across all builds so the iWish, undroidwish
 set bi [borg osbuildinfo]
 set apple [expr {[dict exists $bi manufacturer] && [dict get $bi manufacturer] eq "Apple"}]
 
-# Which Apple build? iOS + Catalyst are the same iWish build; desktop is undroidwish.
-set iwish [expr {[dict exists $bi product] && [dict get $bi product] eq "iWish"}]
-
-# Real iOS hardware (iPad/iPhone/iPod) -- NOT Mac Catalyst, whose model is "Mac..".
-set ios [expr {$apple && [dict exists $bi model] \
-               && [regexp {^(iPad|iPhone|iPod)} [dict get $bi model]]}]
+# iWish (iOS-only) = Apple manufacturer + an iPad/iPhone/iPod model.
+set ios   [expr {$apple && [dict exists $bi model] \
+                 && [regexp {^(iPad|iPhone|iPod)} [dict get $bi model]]}]
+set iwish $ios
 ```
 
 Resulting matrix:
@@ -46,18 +44,18 @@ Resulting matrix:
 | platform | `manufacturer` | `product` | `model` | apple | iwish | ios |
 |---|---|---|---|:--:|:--:|:--:|
 | Android | device maker | build product | device model | 0 | 0 | 0 |
-| macOS desktop (undroidwish) | `Apple` | `undroidwish` | `Mac…` | 1 | 0 | 0 |
-| iWish iOS device / simulator | `Apple` | `iWish` | `iPad…`/`iPhone…` | 1 | 1 | 1 |
-| iWish Mac Catalyst | `Apple` | `iWish` | `Mac…` | 1 | 1 | 0 |
+| macOS desktop (undroidwish) | `Apple` | `MacBook Air` (etc.) | `Mac…` | 1 | 0 | 0 |
+| iWish iOS device / simulator | `Apple` | `iPad` / `iPhone` | `iPad…`/`iPhone…` | 1 | 1 | 1 |
+| iWish Mac Catalyst | `Apple` | `Mac` | `Mac…` | 1 | 0 | 0 |
 
 ## Rationale / gotchas
 
 - **Standard `osbuildinfo` keys only** — no extra/custom key is added; the
   platform is read entirely from the values above.
-- **`product` carries the build identity** (`undroidwish` vs `iWish`). This is the
-  one slightly-conventional use, and it is necessary: Catalyst-iWish and
-  desktop-undroidwish run on **identical Mac hardware** (same `model`,
-  `manufacturer`, `version.release`) — the only thing that differs is the app.
+- **`model` is the discriminator** (`iPad`/`iPhone`/`iPod` ⇒ iOS/iWish; `Mac..`
+  ⇒ desktop/Catalyst). **`product` is the friendly Apple product name**
+  (`iPad`/`iPhone` on iOS, `MacBook Air` etc. on macOS) — informational. iWish is
+  treated as iOS-only, so a Mac (Catalyst or undroidwish) is never `::iwish`.
 - **`model` is read from `sysctl`, NOT `[UIDevice model]`.** On Mac Catalyst
   `[UIDevice currentDevice].model` returns `"iPad"`, which would make Catalyst
   look like iOS. `tclBorgios.m` therefore uses, at compile time (one dylib per
