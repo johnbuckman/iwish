@@ -44,6 +44,10 @@ arm64 toolchain flags) are shared and documented there.
     identify the run target at runtime.
   - **`ble`** → CoreBluetooth (scan / connect / read / write / notify), using the
     peripheral's CB UUID as its "address" since iOS hides the MAC.
+  - **`hardexit`** ([`src-ios/hardexit/`](src-ios/hardexit)) → a one-command dylib
+    that calls `_exit()`. On iOS Tcl's normal `exit` (which runs `Tcl_Finalize`)
+    hangs and leaves a blank window; load this and route `exit` through it for a
+    clean quit. Generic to any iWish app.
 
 ## How it's built
 
@@ -58,8 +62,15 @@ scripts in [`scripts/`](scripts) drive it:
 | `build-blt-dev.sh` | BLT 2.4 (`libBLT24`) |
 | `build-utf6.sh`    | rebuilds Tcl/sdl2tk at `TCL_UTF_MAX=6` |
 
-The shims in `src-ios/` are compiled to `borg1.0`/`ble1.0` loadable dylibs (see
-the comments at the top of each `.m` for the exact `clang` line).
+The shims in `src-ios/` are compiled to `borg1.0`/`ble1.0`/`hardexit` loadable
+dylibs (see the comments at the top of each `.c`/`.m` for the exact `clang` line).
+
+Two more helper scripts package the result:
+
+| script | does |
+|--------|------|
+| `build-icon.sh <image> [<app>]`              | any image → opaque 1024 → `actool` `AppIcon` asset catalog (`Assets.car`), optionally copied into a bundle |
+| `sign-and-install-device.sh <app> <identity> <profile> <udid> [entitlements]` | sign nested dylibs + the app and `devicectl install` to a device |
 
 ### The patches
 
@@ -95,8 +106,50 @@ tree. The iWish changes are also marked inline with `iwish:` comments.)
 5. Assemble a `.app`: the `sdl2wish` binary (renamed), `lib/tcl8.6` + `lib/tk8.6`,
    your `main.tcl` + payload, an `Info.plist` (landscape orientations, status bar
    hidden, `MinimumOSVersion 15.0`), and — for the full battery set — a
-   `lib-batteries/` of the extension dylibs. Sign it with your Apple Development
-   cert + a provisioning profile that includes the device UDID.
+   `lib-batteries/` of the extension dylibs.
+6. Build the icon: `scripts/build-icon.sh <image> <your.app>`.
+7. Sign + install: `scripts/sign-and-install-device.sh <your.app> <identity> <profile> <udid> [entitlements]`
+   — needs an Apple Development cert + a provisioning profile that includes the
+   device UDID.
+
+The app icon is in [`assets/iwish-icon-1024.png`](assets/iwish-icon-1024.png)
+(the iWish apple + Tcl-feather mark). `scripts/build-icon.sh` compiles it with
+`actool` into an `AppIcon` asset catalog (`Assets.car` + `AppIcon*.png`);
+reference `CFBundleIconName AppIcon` in your `Info.plist`. iOS icons must be a
+single opaque 1024×1024 image — iOS applies its own rounded-corner mask.
+
+## Built-in Unix-style commands
+
+iOS sandboxes `fork`/`exec`, so Tcl's `exec ls`, `exec cat`, `exec cp`, ... can
+never work in a packaged app. [`scripts/unix-commands.tcl`](scripts/unix-commands.tcl)
+supplies pure-Tcl replacements for the common filesystem/text utilities:
+
+> `ls` `cat` `head` `tail` `grep` `wc` `cp` `mv` `rm` `mkdir` `rmdir` `touch`
+> `ln` `chmod` `du` `find` `basename` `dirname` `echo`
+
+These are **runtime built-ins, not console helpers**: the runtime sources
+`unix-commands.tcl` from `lib/tcl8.6/init.tcl`, so the commands exist in *every*
+interpreter and are available to all Tcl programs, not just the interactive
+console. They never override a name a program already defines, and they don't
+re-implement things Tcl already has (`pwd`, `cd`, `clock`, `glob`, `file`, ...).
+Process/volume/network utilities (`ps`, `kill`, `df`, `ping`, ...) are left
+undefined — they need `exec` or privileged syscalls iOS forbids; use Tcl's
+`http`/`socket`/TclCurl for networking.
+
+**Wiring it into the runtime** (assembly step): copy `unix-commands.tcl` into the
+bundle's `lib/tcl8.6/` and append one line to that dir's `init.tcl`:
+
+```tcl
+catch {source [file join $tcl_library unix-commands.tcl]}
+```
+
+A bare runtime smoke-test `main.tcl` is then just:
+
+```tcl
+package require Tk
+wm title . "iWish"
+console show
+```
 
 The **0.1-alpha release** attaches a prebuilt standalone `iWish.app` (the Tk demo
 in `scripts/demo.tcl`, no extra extensions) for `arm64-apple-ios`. It is

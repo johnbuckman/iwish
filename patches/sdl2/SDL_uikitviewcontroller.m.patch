@@ -114,3 +114,33 @@
  }
  
  - (BOOL)prefersHomeIndicatorAutoHidden
+@@ -616,6 +616,17 @@
+ 
+ - (void)updateKeyboard
+ {
++    /* iWish/undroidwish: Tcl/Tk runs on a secondary thread, and this routine is
++     * reached off-main via Tk_SetCaretPos -> SDL_SetTextInputRect when the soft
++     * keyboard is visible. Touching UIKit (self.view.frame -> safe-area recalc)
++     * off the main thread aborts the app (SIGABRT). Bounce to the main thread. */
++    if (![NSThread isMainThread]) {
++        dispatch_async(dispatch_get_main_queue(), ^{
++            [self updateKeyboard];
++        });
++        return;
++    }
++
+     SDL_WindowData *data = (__bridge SDL_WindowData *)window->driverdata;
+ 
+     CGAffineTransform t = self.view.transform;
+@@ -640,7 +651,10 @@
+     frame.origin.x += offset.x;
+     frame.origin.y += offset.y;
+ 
+-    self.view.frame = frame;
++    /* Skip the redundant re-frame (also avoids needless safe-area churn). */
++    if (!CGRectEqualToRect(self.view.frame, frame)) {
++        self.view.frame = frame;
++    }
+ }
+ 
+ - (void)setKeyboardHeight:(int)height
