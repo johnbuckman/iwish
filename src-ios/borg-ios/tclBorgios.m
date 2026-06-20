@@ -47,6 +47,59 @@ static UIWindow *gToastWindow = nil;
  * "default" when de1app asks for a negative percentage (AndroWish convention). */
 static CGFloat gDefaultBrightness = -1.0;
 
+/* SDL-layer toast helpers, identical to the macOS desktop build (tkBorgOSX.c).
+ * Render the rounded toast offscreen on a Tk canvas with a magenta chroma-key
+ * background, then hand it to `sdltk borgtoast` which captures it and blits it
+ * at the SDL present layer -- always foreground, above any Tk widget.  The
+ * `sdltk borgtoast` command and the present-layer blit live in the shared
+ * sdl2tk sources, so they are already compiled into the iOS build. */
+static const char borgTkHelpers[] =
+"namespace eval ::borg::ui {}\n"
+"proc ::borg::ui::_roundrect {c x1 y1 x2 y2 r args} {\n"
+"  set p [list $x1 [expr {$y1+$r}] $x1 $y1 [expr {$x1+$r}] $y1 [expr {$x2-$r}] $y1 $x2 $y1 $x2 [expr {$y1+$r}] $x2 [expr {$y2-$r}] $x2 $y2 [expr {$x2-$r}] $y2 [expr {$x1+$r}] $y2 $x1 $y2 $x1 [expr {$y2-$r}]]\n"
+"  return [$c create polygon $p -smooth true {*}$args]\n"
+"}\n"
+"proc ::borg::ui::_toast_sdl {text ms} {\n"
+"  set key #ff00ff\n"
+"  set sw [winfo screenwidth .]\n"
+"  set sh [winfo screenheight .]\n"
+"  set fs [expr {int($sh/30.0)}]; if {$fs < 14} { set fs 14 }\n"
+"  catch {destroy ._borgtoast}\n"
+"  set rc [catch {\n"
+"    set t [toplevel ._borgtoast -bg $key -bd 0 -highlightthickness 0]\n"
+"    wm overrideredirect $t 1\n"
+"    catch {wm attributes $t -topmost 1}\n"
+"    set c [canvas $t.c -bg $key -highlightthickness 0 -bd 0]\n"
+"    pack $c\n"
+"    set padx $fs; set pady [expr {int($fs*0.7)}]; set r [expr {int($fs*1.4)}]\n"
+"    set maxw [expr {int($sw*0.8)}]\n"
+"    set tid [$c create text $padx $pady -text $text -fill white -anchor nw -justify center -font [list Helvetica $fs] -width $maxw -tags t]\n"
+"    lassign [$c bbox $tid] bx1 by1 bx2 by2\n"
+"    set tw [expr {$bx2-$bx1}]; set th [expr {$by2-$by1}]\n"
+"    set W [expr {$tw+2*$padx}]; set H [expr {$th+2*$pady}]\n"
+"    set rid [::borg::ui::_roundrect $c 0 0 $W $H $r -fill #444444 -outline {} -tags bg]\n"
+"    $c lower $rid $tid\n"
+"    $c configure -width $W -height $H\n"
+"    wm geometry $t ${W}x${H}+[expr {($sw-$W)/2}]+[expr {int($sh*0.82)-$H/2}]\n"
+"    update idletasks\n"
+"    sdltk borgtoast $c $ms\n"
+"  } emsg]\n"
+"  catch {destroy ._borgtoast}\n"
+"  if {$rc} { return -code error $emsg }\n"
+"}\n";
+
+static int borgTkHelpersLoaded = 0;
+
+static void
+BorgEnsureTkHelpers(Tcl_Interp *ip)
+{
+    if (!borgTkHelpersLoaded) {
+        if (Tcl_Eval(ip, borgTkHelpers) == TCL_OK) {
+            borgTkHelpersLoaded = 1;
+        }
+    }
+}
+
 /* Run a fire-and-forget UIKit block on the main thread. Uses dispatch_ASYNC,
  * never dispatch_sync: under undroidwish the Tcl interpreter runs OFF the main
  * thread while the main thread is busy in the SDL/Tk loop and not servicing the
@@ -203,36 +256,56 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
     }
 
     if (strcmp(sub, "toast") == 0) {
-        /* Native toast via scalessec/Toast (UIView+Toast). de1app calls
-         * `borg toast <msg> ?duration? ?html?`; we just show the message text.
-         * Dispatch async to the main thread (never sync -- Tcl runs off-main and
-         * a sync hop would deadlock the SDL/Tk loop). */
+        /* Same SDL-layer rounded toast as the macOS desktop build: render the
+         * toast offscreen on a Tk canvas, capture it (`sdltk borgtoast`), and
+         * blit it at the SDL present layer so it is always foreground.  de1app
+         * calls `borg toast <msg> ?long? ?html?`.  Runs on the Tcl thread (no
+         * dispatch); the present-layer blit handles cross-thread compositing.
+         * Falls back to the native UIKit (scalessec) toast if the SDL path
+         * errors, so a toast is never lost. */
         if (objc >= 3) {
-            NSString *m = [NSString stringWithUTF8String:Tcl_GetString(objv[2])];
-            if (m) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    /* find the foreground window scene */
-                    UIWindowScene *ws = nil;
-                    for (UIScene *sc in [UIApplication sharedApplication].connectedScenes) {
-                        if (![sc isKindOfClass:[UIWindowScene class]]) continue;
-                        ws = (UIWindowScene *)sc;
-                        if (sc.activationState == UISceneActivationStateForegroundActive) break;
-                    }
-                    if (!ws) return;
-                    /* lazily create a transparent, non-interactive overlay window
-                     * above SDL's so the toast actually composites on screen */
-                    if (gToastWindow == nil) {
-                        gToastWindow = [[UIWindow alloc] initWithWindowScene:ws];
-                        gToastWindow.windowLevel = UIWindowLevelAlert + 1;
-                        gToastWindow.backgroundColor = [UIColor clearColor];
-                        gToastWindow.userInteractionEnabled = NO;
-                        gToastWindow.rootViewController = [UIViewController new];
-                        gToastWindow.hidden = NO;   /* show without becoming key (SDL keeps key) */
-                    }
-                    gToastWindow.frame = ws.coordinateSpace.bounds;
-                    gToastWindow.rootViewController.view.frame = gToastWindow.bounds;
-                    [gToastWindow.rootViewController.view makeToast:m];
-                });
+            int lng = 0;
+            if (objc >= 4) { (void) Tcl_GetBooleanFromObj(NULL, objv[3], &lng); }
+            BorgEnsureTkHelpers(ip);
+            Tcl_Obj *cmd = Tcl_NewListObj(0, NULL);
+            Tcl_ListObjAppendElement(NULL, cmd,
+                Tcl_NewStringObj("::borg::ui::_toast_sdl", -1));
+            Tcl_ListObjAppendElement(NULL, cmd, objv[2]);
+            Tcl_ListObjAppendElement(NULL, cmd, Tcl_NewIntObj(lng ? 3500 : 2000));
+            Tcl_IncrRefCount(cmd);
+            int rc = Tcl_EvalObjEx(ip, cmd, TCL_EVAL_DIRECT);
+            Tcl_DecrRefCount(cmd);
+            Tcl_ResetResult(ip);
+            if (rc != TCL_OK) {
+                /* fallback: native toast via scalessec/Toast (UIView+Toast).
+                 * Dispatch async to the main thread (never sync -- Tcl runs
+                 * off-main and a sync hop would deadlock the SDL/Tk loop). */
+                NSString *m = [NSString stringWithUTF8String:Tcl_GetString(objv[2])];
+                if (m) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        /* find the foreground window scene */
+                        UIWindowScene *ws = nil;
+                        for (UIScene *sc in [UIApplication sharedApplication].connectedScenes) {
+                            if (![sc isKindOfClass:[UIWindowScene class]]) continue;
+                            ws = (UIWindowScene *)sc;
+                            if (sc.activationState == UISceneActivationStateForegroundActive) break;
+                        }
+                        if (!ws) return;
+                        /* lazily create a transparent, non-interactive overlay
+                         * window above SDL's so the toast composites on screen */
+                        if (gToastWindow == nil) {
+                            gToastWindow = [[UIWindow alloc] initWithWindowScene:ws];
+                            gToastWindow.windowLevel = UIWindowLevelAlert + 1;
+                            gToastWindow.backgroundColor = [UIColor clearColor];
+                            gToastWindow.userInteractionEnabled = NO;
+                            gToastWindow.rootViewController = [UIViewController new];
+                            gToastWindow.hidden = NO;   /* show without becoming key (SDL keeps key) */
+                        }
+                        gToastWindow.frame = ws.coordinateSpace.bounds;
+                        gToastWindow.rootViewController.view.frame = gToastWindow.bounds;
+                        [gToastWindow.rootViewController.view makeToast:m];
+                    });
+                }
             }
         }
         return TCL_OK;

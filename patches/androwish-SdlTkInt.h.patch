@@ -1,0 +1,13 @@
+diff --git a/jni/sdl2tk/sdl/SdlTkInt.h b/jni/sdl2tk/sdl/SdlTkInt.h
+index 9156a698..3b3d809f 100644
+--- a/jni/sdl2tk/sdl/SdlTkInt.h
++++ b/jni/sdl2tk/sdl/SdlTkInt.h
+@@ -389,6 +389,8 @@ extern int SdlTkGfxTextWidth(Font f, const char *string, int length, int *maxw);
+ 
+ /* SdlTkGfx.c */
+ extern void SdlTkSetSWCursor(const unsigned char *data);
++extern void SdlTkBorgToastSet(const void *rgba, int w, int h, int ms);
++extern int SdlTkBorgToastPending(void);
+ extern int SdlTkPixelFormat(SDL_Surface *sdl);
+ extern void SdlTkGfxBlitRegion(SDL_Surface *src, Region rgn,
+     SDL_Surface *dest, int dest_x, int dest_y);

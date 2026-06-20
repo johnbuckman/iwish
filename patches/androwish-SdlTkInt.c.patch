@@ -1,8 +1,22 @@
 diff --git a/jni/sdl2tk/sdl/SdlTkInt.c b/jni/sdl2tk/sdl/SdlTkInt.c
-index 47c3aadb..e460ebf6 100644
+index 47c3aadb..352cb901 100644
 --- a/jni/sdl2tk/sdl/SdlTkInt.c
 +++ b/jni/sdl2tk/sdl/SdlTkInt.c
-@@ -796,29 +796,35 @@ MkTransChars(XKeyEvent *ev)
+@@ -265,6 +265,13 @@ SdlTkScreenRefresh(void)
+     SDL_GLContext currgl;
+ #endif
+ 
++    /* Keep presenting while a borg toast is live (or just expired and needs
++     * one clearing frame), so it shows and disappears even on a static screen
++     * that would otherwise stop presenting. */
++    if (SdlTkBorgToastPending()) {
++	SdlTkX.draw_later |= SDLTKX_PRESENT;
++    }
++
+     if ((SdlTkX.draw_later & (SDLTKX_DRAW | SDLTKX_DRAWALL | SDLTKX_PRESENT))
+ 	== SDLTKX_PRESENT) {
+ 	SdlTkGfxPresent(SdlTkX.sdlrend, SdlTkX.sdltex);
+@@ -796,29 +803,35 @@ MkTransChars(XKeyEvent *ev)
  	ev->nbytes = 1;
  	return 1;
      }
@@ -59,7 +73,7 @@ index 47c3aadb..e460ebf6 100644
      }
      if (ch) {
  	ev->trans_chars[0] = ch;
-@@ -2261,6 +2267,14 @@ doNormalKeyEvent:
+@@ -2261,6 +2274,14 @@ doNormalKeyEvent:
  	    EVLOG("EV=WINDOWEVENT_SIZE_CHANGED");
  	    width = sdl_event->window.data1;
  	    height = sdl_event->window.data2;
@@ -74,7 +88,7 @@ index 47c3aadb..e460ebf6 100644
  	    if (SdlTkX.root_w) {
  		SDL_GetWindowSize(SdlTkX.sdlscreen, &oldw, &oldh);
  	    } else {
-@@ -2382,7 +2396,9 @@ doNormalKeyEvent:
+@@ -2382,7 +2403,9 @@ doNormalKeyEvent:
  #ifdef ANDROID
  				   0x00, 0x00, 0x00
  #else
@@ -85,7 +99,7 @@ index 47c3aadb..e460ebf6 100644
  #endif
  				   );
  		if (width > oldw) {
-@@ -2955,11 +2971,14 @@ SdlTkVisRgnChanged(_Window *_w, int flags, int x, int y)
+@@ -2955,11 +2978,14 @@ SdlTkVisRgnChanged(_Window *_w, int flags, int x, int y)
      /* If areas of the root window were exposed, paint them now */
      if (SdlTkX.screen_dirty_region &&
  	!XEmptyRegion(SdlTkX.screen_dirty_region)) {
@@ -101,7 +115,7 @@ index 47c3aadb..e460ebf6 100644
  #endif
  				  );
  
-@@ -4415,6 +4434,81 @@ done:
+@@ -4415,6 +4441,81 @@ done:
      return ret;
  }
  
@@ -183,7 +197,7 @@ index 47c3aadb..e460ebf6 100644
  static int
  PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
  		int objc, Tcl_Obj *const objv[])
-@@ -4427,9 +4521,32 @@ PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
+@@ -4427,9 +4528,32 @@ PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
  	Tcl_WrongNumArgs(interp, 1, objv, "");
  	return TCL_ERROR;
      }
@@ -216,7 +230,133 @@ index 47c3aadb..e460ebf6 100644
      Tcl_AppendElement(interp, "state");
      switch (pst) {
      case SDL_POWERSTATE_ON_BATTERY:
-@@ -4546,6 +4663,20 @@ SizeObjCmd(ClientData clientData, Tcl_Interp *interp,
+@@ -4457,6 +4581,125 @@ PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
+     return TCL_OK;
+ }
+ 
++/*
++ *----------------------------------------------------------------------
++ *
++ * BorgtoastObjCmd --
++ *
++ *	sdltk borgtoast WINDOW MS
++ *
++ *	Capture the pixels of WINDOW (an already-rendered, offscreen Tk
++ *	canvas holding a rounded toast on a pure-magenta background) and
++ *	hand them to the SDL present layer so they are composited on top of
++ *	every frame -- always foreground -- for MS milliseconds.  The
++ *	magenta background is chroma-keyed to full transparency so only the
++ *	rounded toast shows.  See SdlTkGfxDrawBorgToast() in SdlTkGfx.c.
++ *
++ *----------------------------------------------------------------------
++ */
++
++static int
++BorgtoastObjCmd(ClientData clientData, Tcl_Interp *interp,
++		int objc, Tcl_Obj *const objv[])
++{
++    Tk_Window tkwin = (Tk_Window) clientData;
++    Tk_Window toast;
++    int ms, w, h, i, n;
++    _Window *_w;
++    Display *display;
++    XImage *img;
++    SDL_Surface *src, *conv;
++    Uint32 *px;
++    void *packed = NULL;
++    int ret = TCL_OK;
++
++    if (objc != 3) {
++	Tcl_WrongNumArgs(interp, 1, objv, "window ms");
++	return TCL_ERROR;
++    }
++    if (TkGetWindowFromObj(interp, tkwin, objv[1], &toast) != TCL_OK) {
++	return TCL_ERROR;
++    }
++    if (Tcl_GetIntFromObj(interp, objv[2], &ms) != TCL_OK) {
++	return TCL_ERROR;
++    }
++    Tk_MakeWindowExist(toast);
++    w = Tk_Width(toast);
++    h = Tk_Height(toast);
++    if ((w <= 0) || (h <= 0)) {
++	Tcl_SetObjResult(interp,
++			 Tcl_NewStringObj("toast window has no size", -1));
++	return TCL_ERROR;
++    }
++    display = Tk_Display(toast);
++    _w = (_Window *) ((TkWindow *) toast)->window;
++
++    /* XGetImage takes the xlib lock itself; SdlTkLock is non-recursive, so we
++     * must NOT be holding it here or we deadlock. */
++    img = XGetImage(display, (Drawable) _w, 0, 0,
++		    (unsigned) w, (unsigned) h, AllPlanes, ZPixmap);
++    if (img == NULL) {
++	Tcl_SetObjResult(interp,
++			 Tcl_NewStringObj("toast capture failed", -1));
++	return TCL_ERROR;
++    }
++
++    /* Wrap the captured pixels (root-surface format) and convert to a
++     * known ARGB8888 layout we can hand to the renderer. */
++    src = SDL_CreateRGBSurfaceFrom(img->data, w, h,
++	    SdlTkX.sdlsurf->format->BitsPerPixel, img->bytes_per_line,
++	    SdlTkX.sdlsurf->format->Rmask, SdlTkX.sdlsurf->format->Gmask,
++	    SdlTkX.sdlsurf->format->Bmask, SdlTkX.sdlsurf->format->Amask);
++    if (src == NULL) {
++	XDestroyImage(img);
++	Tcl_SetObjResult(interp,
++			 Tcl_NewStringObj("toast surface failed", -1));
++	return TCL_ERROR;
++    }
++    conv = SDL_ConvertSurfaceFormat(src, SDL_PIXELFORMAT_ARGB8888, 0);
++    SDL_FreeSurface(src);
++    XDestroyImage(img);
++    if (conv == NULL) {
++	Tcl_SetObjResult(interp,
++			 Tcl_NewStringObj("toast convert failed", -1));
++	return TCL_ERROR;
++    }
++
++    /* Chroma-key: the magenta canvas background -> transparent; everything
++     * else -> opaque.  Anti-aliased edges (black/magenta blends) keep their
++     * colour and stay opaque, giving a soft edge with no magenta halo. */
++    px = (Uint32 *) conv->pixels;
++    n = (conv->pitch / 4) * h;
++    for (i = 0; i < n; i++) {
++	Uint32 p = px[i];
++	int r = (p >> 16) & 0xFF;
++	int g = (p >>  8) & 0xFF;
++	int b = (p      ) & 0xFF;
++
++	if ((r > 180) && (g < 80) && (b > 180)) {
++	    px[i] = 0;				/* transparent */
++	} else {
++	    px[i] = 0xFF000000u | (p & 0x00FFFFFFu); /* opaque */
++	}
++    }
++
++    /* SdlTkBorgToastSet wants tightly packed w*4 rows. */
++    if (conv->pitch != w * 4) {
++	packed = ckalloc((size_t) w * h * 4);
++	for (i = 0; i < h; i++) {
++	    memcpy((char *) packed + (size_t) i * w * 4,
++		   (char *) conv->pixels + (size_t) i * conv->pitch,
++		   (size_t) w * 4);
++	}
++	SdlTkBorgToastSet(packed, w, h, ms);
++	ckfree(packed);
++    } else {
++	SdlTkBorgToastSet(conv->pixels, w, h, ms);
++    }
++    SDL_FreeSurface(conv);
++    return ret;
++}
++
+ static int
+ RestoreObjCmd(ClientData clientData, Tcl_Interp *interp,
+ 	       int objc, Tcl_Obj *const objv[])
+@@ -4546,6 +4789,20 @@ SizeObjCmd(ClientData clientData, Tcl_Interp *interp,
      return TCL_OK;
  }
  
@@ -237,7 +377,15 @@ index 47c3aadb..e460ebf6 100644
  static int
  ScreensaverObjCmd(ClientData clientData, Tcl_Interp *interp,
  		  int objc, Tcl_Obj *const objv[])
-@@ -4991,6 +5122,7 @@ static const TkEnsemble sdltkCmdMap[] = {
+@@ -4971,6 +5228,7 @@ static const TkEnsemble sdltkCmdMap[] = {
+     { "accelerometer", AccelerometerObjCmd, NULL },
+     { "addfont", AddfontObjCmd, NULL },
+     { "android", AndroidObjCmd, NULL },
++    { "borgtoast", BorgtoastObjCmd, NULL },
+     { "deiconify", DeiconifyObjCmd, NULL },
+     { "expose", ExposeObjCmd, NULL },
+     { "fonts", FontsObjCmd, NULL },
+@@ -4991,6 +5249,7 @@ static const TkEnsemble sdltkCmdMap[] = {
      { "restore", RestoreObjCmd, NULL },
      { "root", RootObjCmd, NULL },
      { "screensaver", ScreensaverObjCmd, NULL },

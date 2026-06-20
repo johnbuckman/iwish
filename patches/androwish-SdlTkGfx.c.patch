@@ -1,8 +1,180 @@
 diff --git a/jni/sdl2tk/sdl/SdlTkGfx.c b/jni/sdl2tk/sdl/SdlTkGfx.c
-index e43c9b64..18f9880d 100644
+index e43c9b64..6d0fd2f7 100644
 --- a/jni/sdl2tk/sdl/SdlTkGfx.c
 +++ b/jni/sdl2tk/sdl/SdlTkGfx.c
-@@ -886,6 +886,13 @@ SdlTkGfxUpdateRegion(SDL_Renderer *rend, SDL_Texture *tex,
+@@ -16,6 +16,171 @@ static SDL_Surface *cursor_surf = NULL;
+ static SDL_Texture *cursor_tex = NULL;
+ static const unsigned char *cursor_data[2] = { NULL, NULL };
+ 
++/*
++ *----------------------------------------------------------------------
++ * borg toast (SDL-layer, always-foreground rounded toast).
++ *
++ * The Tcl side (sdltk borgtoast) renders the rounded toast onto an
++ * offscreen Tk canvas, captures it as ARGB8888 pixels and hands them here
++ * via SdlTkBorgToastSet().  SdlTkGfxDrawBorgToast() then composites those
++ * pixels on top of every presented frame until the toast expires, so the
++ * toast is always foreground regardless of which Tk widgets (e.g. a
++ * blt::graph) cover the application's own canvas.
++ *
++ * The pixel buffer is shared between the Tcl thread (producer) and the SDL
++ * render thread (consumer), so it is guarded by a mutex.  The SDL_Texture
++ * is created/updated lazily on the render thread, which is the only thread
++ * allowed to touch the renderer.
++ *----------------------------------------------------------------------
++ */
++
++static SDL_mutex   *borg_toast_mtx = NULL;
++static void        *borg_toast_rgba = NULL;	/* ARGB8888, w*h*4, SDL_malloc */
++static int          borg_toast_w = 0, borg_toast_h = 0;
++static Uint32       borg_toast_expire = 0;	/* SDL_GetTicks() deadline */
++static int          borg_toast_dirty = 0;	/* new pixels need upload */
++static SDL_Texture *borg_toast_tex = NULL;
++static int          borg_toast_texw = 0, borg_toast_texh = 0;
++
++static SDL_mutex *
++SdlTkBorgToastMutex(void)
++{
++    if (borg_toast_mtx == NULL) {
++	borg_toast_mtx = SDL_CreateMutex();
++    }
++    return borg_toast_mtx;
++}
++
++/*
++ * True while a toast still needs drawing (pending pixels or a live texture).
++ * SdlTkScreenRefresh() uses this to keep requesting presents until the toast
++ * has expired and been cleared, so it works even on an otherwise static
++ * screen.  Lockless pointer reads: at worst one frame stale, which is benign.
++ */
++int
++SdlTkBorgToastPending(void)
++{
++    return (borg_toast_tex != NULL) || (borg_toast_rgba != NULL);
++}
++
++void
++SdlTkBorgToastSet(const void *rgba, int w, int h, int ms)
++{
++    SDL_mutex *m = SdlTkBorgToastMutex();
++
++    if (m != NULL) {
++	SDL_LockMutex(m);
++    }
++    if (borg_toast_rgba != NULL) {
++	SDL_free(borg_toast_rgba);
++	borg_toast_rgba = NULL;
++    }
++    if ((rgba != NULL) && (w > 0) && (h > 0) && (ms > 0)) {
++	size_t sz = (size_t) w * (size_t) h * 4;
++
++	borg_toast_rgba = SDL_malloc(sz);
++	if (borg_toast_rgba != NULL) {
++	    memcpy(borg_toast_rgba, rgba, sz);
++	    borg_toast_w = w;
++	    borg_toast_h = h;
++	    borg_toast_expire = SDL_GetTicks() + (Uint32) ms;
++	    borg_toast_dirty = 1;
++	}
++    } else {
++	/* explicit clear */
++	borg_toast_expire = 0;
++    }
++    if (m != NULL) {
++	SDL_UnlockMutex(m);
++    }
++    /* Wake the render loop so the toast appears promptly. */
++    SdlTkX.draw_later |= (SDLTKX_DRAW | SDLTKX_DRAWALL | SDLTKX_PRESENT);
++}
++
++static void
++SdlTkGfxDrawBorgToast(SDL_Renderer *rend)
++{
++    SDL_mutex *m = borg_toast_mtx;
++    Uint32 now = SDL_GetTicks();
++    int have = 0, tw = 0, th = 0;
++
++    if (m != NULL) {
++	SDL_LockMutex(m);
++    }
++
++    /* Expired (or never set): drop texture + buffer and bail. */
++    if ((borg_toast_expire == 0) || (now >= borg_toast_expire)) {
++	if (borg_toast_tex != NULL) {
++	    SDL_DestroyTexture(borg_toast_tex);
++	    borg_toast_tex = NULL;
++	}
++	if (borg_toast_rgba != NULL) {
++	    SDL_free(borg_toast_rgba);
++	    borg_toast_rgba = NULL;
++	}
++	if (m != NULL) {
++	    SDL_UnlockMutex(m);
++	}
++	return;
++    }
++
++    /* (Re)upload pixels if a new toast arrived. */
++    if (borg_toast_dirty && (borg_toast_rgba != NULL)) {
++	if ((borg_toast_tex != NULL) &&
++	    ((borg_toast_texw != borg_toast_w) ||
++	     (borg_toast_texh != borg_toast_h))) {
++	    SDL_DestroyTexture(borg_toast_tex);
++	    borg_toast_tex = NULL;
++	}
++	if (borg_toast_tex == NULL) {
++	    borg_toast_tex = SDL_CreateTexture(rend, SDL_PIXELFORMAT_ARGB8888,
++					       SDL_TEXTUREACCESS_STATIC,
++					       borg_toast_w, borg_toast_h);
++	    borg_toast_texw = borg_toast_w;
++	    borg_toast_texh = borg_toast_h;
++	    if (borg_toast_tex != NULL) {
++		SDL_SetTextureBlendMode(borg_toast_tex, SDL_BLENDMODE_BLEND);
++	    }
++	}
++	if (borg_toast_tex != NULL) {
++	    SDL_UpdateTexture(borg_toast_tex, NULL, borg_toast_rgba,
++			      borg_toast_w * 4);
++	}
++	borg_toast_dirty = 0;
++    }
++
++    if (borg_toast_tex != NULL) {
++	have = 1;
++	tw = borg_toast_texw;
++	th = borg_toast_texh;
++    }
++    if (m != NULL) {
++	SDL_UnlockMutex(m);
++    }
++
++    if (have) {
++	int ow = 0, oh = 0;
++	SDL_Rect dst;
++
++	SDL_GetRendererOutputSize(rend, &ow, &oh);
++	if ((ow <= 0) || (oh <= 0)) {
++	    ow = tw;
++	    oh = th;
++	}
++	dst.w = (tw > ow) ? ow : tw;
++	dst.h = (th > oh) ? oh : th;
++	dst.x = (ow - dst.w) / 2;
++	dst.y = (int) (oh * 0.82) - dst.h / 2;
++	if (dst.y < 0) {
++	    dst.y = 0;
++	}
++	if (dst.y + dst.h > oh) {
++	    dst.y = oh - dst.h;
++	}
++	SDL_RenderCopy(rend, borg_toast_tex, NULL, &dst);
++    }
++}
++
+ void
+ SdlTkSetSWCursor(const unsigned char *data)
+ {
+@@ -886,6 +1051,13 @@ SdlTkGfxUpdateRegion(SDL_Renderer *rend, SDL_Texture *tex,
      long i;
      int count = 0;
  
@@ -16,3 +188,19 @@ index e43c9b64..18f9880d 100644
      if (SdlTkX.draw_later & SDLTKX_RENDCLR2) {
  	SdlTkX.draw_later &= ~SDLTKX_RENDCLR2;
  	SDL_SetRenderDrawColor(SdlTkX.sdlrend, 0, 0, 0, 255);
+@@ -955,6 +1127,7 @@ SdlTkGfxUpdateRegion(SDL_Renderer *rend, SDL_Texture *tex,
+ 	if (SdlTkX.arg_swcursor > 0) {
+ 	    DrawSWCursor(rend, tex);
+ 	}
++	SdlTkGfxDrawBorgToast(rend);
+ 	SDL_RenderPresent(rend);
+     }
+ #endif
+@@ -979,6 +1152,7 @@ SdlTkGfxPresent(SDL_Renderer *rend, SDL_Texture *tex)
+     if (SdlTkX.arg_swcursor > 0) {
+ 	DrawSWCursor(rend, tex);
+     }
++    SdlTkGfxDrawBorgToast(rend);
+ #endif
+     SDL_RenderPresent(rend);
+ }
