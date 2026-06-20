@@ -159,10 +159,10 @@ in `scripts/demo.tcl`, no extra extensions) for `arm64-apple-ios`. It is
 
 ## License
 
-The patches, scripts, shims, and documentation here are licensed under the **GNU
-General Public License v3.0** (see [`LICENSE`](LICENSE)). They are modifications
-to / instructions for AndroWish, SDL2, and Tcl/Tk; **those projects and the
-third-party libraries they bundle retain their own original licenses.**
+The patches, scripts, shims, and documentation here are licensed under the
+**Tcl/Tk license** (a BSD-style license; see [`LICENSE`](LICENSE)). They are
+modifications to / instructions for AndroWish, SDL2, and Tcl/Tk; **those projects
+and the third-party libraries they bundle retain their own original licenses.**
 
 `src-ios/borg-ios/UIView+Toast.{h,m}` are from
 [scalessec/Toast](https://github.com/scalessec/Toast) and remain under their
