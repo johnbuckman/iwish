@@ -1,8 +1,16 @@
 diff --git a/jni/sdl2tk/sdl/SdlTkInt.h b/jni/sdl2tk/sdl/SdlTkInt.h
-index 9156a698..3b3d809f 100644
+index 9156a698..1262733a 100644
 --- a/jni/sdl2tk/sdl/SdlTkInt.h
 +++ b/jni/sdl2tk/sdl/SdlTkInt.h
-@@ -389,6 +389,8 @@ extern int SdlTkGfxTextWidth(Font f, const char *string, int length, int *maxw);
+@@ -164,6 +164,7 @@ struct _XSQEvent {
+ #define SDLTKX_PRESENT  0x04    /* SDL_RenderPresent() required. */
+ #define SDLTKX_RENDCLR  0x08    /* SDL_RenderClear() on front buffer. */
+ #define SDLTKX_SCALED   0x10    /* Viewport is scaled. */
++#define SDLTKX_FULLSYNC 0x20    /* iwish: full surface->texture upload needed (expose/drawall). */
+ #define SDLTKX_RENDCLR2 0x80    /* SDL_RenderClear() on back buffer. */
+ 
+ typedef struct SdlTkXInfo {
+@@ -389,6 +390,8 @@ extern int SdlTkGfxTextWidth(Font f, const char *string, int length, int *maxw);
  
  /* SdlTkGfx.c */
  extern void SdlTkSetSWCursor(const unsigned char *data);

@@ -1,5 +1,5 @@
 diff --git a/jni/sdl2tk/sdl/SdlTkGfx.c b/jni/sdl2tk/sdl/SdlTkGfx.c
-index e43c9b64..6d0fd2f7 100644
+index e43c9b64..7c0d4815 100644
 --- a/jni/sdl2tk/sdl/SdlTkGfx.c
 +++ b/jni/sdl2tk/sdl/SdlTkGfx.c
 @@ -16,6 +16,171 @@ static SDL_Surface *cursor_surf = NULL;
@@ -174,21 +174,25 @@ index e43c9b64..6d0fd2f7 100644
  void
  SdlTkSetSWCursor(const unsigned char *data)
  {
-@@ -886,6 +1051,13 @@ SdlTkGfxUpdateRegion(SDL_Renderer *rend, SDL_Texture *tex,
+@@ -886,6 +1051,17 @@ SdlTkGfxUpdateRegion(SDL_Renderer *rend, SDL_Texture *tex,
      long i;
      int count = 0;
  
-+    /* iwish: the desktop (root) area is not always re-marked dirty after expose,
-+     * so sync the whole surface to the texture each present to keep the
-+     * background colour correct. */
-+    if (surf && tex) {
++    /* iwish: the root background only needs a full surface->texture sync after an
++     * expose / full redraw (flagged via SDLTKX_FULLSYNC in SdlTkScreenRefresh).
++     * In steady state the per-rect loop below uploads exactly the changed pixels,
++     * so we skip the blanket whole-surface upload that used to run every present
++     * (it re-uploaded the entire surface each frame -- pure waste when only a
++     * chart / a few readouts changed). */
++    if (surf && tex && (SdlTkX.draw_later & SDLTKX_FULLSYNC)) {
++	SdlTkX.draw_later &= ~SDLTKX_FULLSYNC;
 +	SDL_UpdateTexture(tex, NULL, surf->pixels, surf->pitch);
 +    }
 +
      if (SdlTkX.draw_later & SDLTKX_RENDCLR2) {
  	SdlTkX.draw_later &= ~SDLTKX_RENDCLR2;
  	SDL_SetRenderDrawColor(SdlTkX.sdlrend, 0, 0, 0, 255);
-@@ -955,6 +1127,7 @@ SdlTkGfxUpdateRegion(SDL_Renderer *rend, SDL_Texture *tex,
+@@ -955,6 +1131,7 @@ SdlTkGfxUpdateRegion(SDL_Renderer *rend, SDL_Texture *tex,
  	if (SdlTkX.arg_swcursor > 0) {
  	    DrawSWCursor(rend, tex);
  	}
@@ -196,7 +200,7 @@ index e43c9b64..6d0fd2f7 100644
  	SDL_RenderPresent(rend);
      }
  #endif
-@@ -979,6 +1152,7 @@ SdlTkGfxPresent(SDL_Renderer *rend, SDL_Texture *tex)
+@@ -979,6 +1156,7 @@ SdlTkGfxPresent(SDL_Renderer *rend, SDL_Texture *tex)
      if (SdlTkX.arg_swcursor > 0) {
  	DrawSWCursor(rend, tex);
      }

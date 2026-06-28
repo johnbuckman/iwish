@@ -1,5 +1,5 @@
 diff --git a/jni/sdl2tk/sdl/SdlTkInt.c b/jni/sdl2tk/sdl/SdlTkInt.c
-index 47c3aadb..352cb901 100644
+index 47c3aadb..d2507c50 100644
 --- a/jni/sdl2tk/sdl/SdlTkInt.c
 +++ b/jni/sdl2tk/sdl/SdlTkInt.c
 @@ -265,6 +265,13 @@ SdlTkScreenRefresh(void)
@@ -16,7 +16,26 @@ index 47c3aadb..352cb901 100644
      if ((SdlTkX.draw_later & (SDLTKX_DRAW | SDLTKX_DRAWALL | SDLTKX_PRESENT))
  	== SDLTKX_PRESENT) {
  	SdlTkGfxPresent(SdlTkX.sdlrend, SdlTkX.sdltex);
-@@ -796,29 +803,35 @@ MkTransChars(XKeyEvent *ev)
+@@ -327,12 +334,18 @@ SdlTkScreenRefresh(void)
+ 	XUnionRegion(SdlTkX.screen_dirty_region, SdlTkX.screen_update_region,
+ 		     SdlTkX.screen_update_region);
+ 	XSetEmptyRegion(SdlTkX.screen_dirty_region);
++	/* Root background was exposed -> the texture's non-dirty area may be
++	 * stale; request a full surface->texture sync this present. */
++	SdlTkX.draw_later |= SDLTKX_FULLSYNC;
+     }
+ 
+     if (SdlTkX.draw_later & SDLTKX_DRAWALL) {
+ 	XRectangle r;
+ 
+ 	SdlTkX.draw_later &= ~SDLTKX_DRAWALL;
++	/* A full redraw (resize, pan/zoom, show/restore, init) can change the
++	 * whole surface incl. background -> full surface->texture sync. */
++	SdlTkX.draw_later |= SDLTKX_FULLSYNC;
+ 	r.x = r.y = 0;
+ 	r.width = SdlTkX.screen->width;
+ 	r.height = SdlTkX.screen->height;
+@@ -796,29 +809,35 @@ MkTransChars(XKeyEvent *ev)
  	ev->nbytes = 1;
  	return 1;
      }
@@ -73,7 +92,7 @@ index 47c3aadb..352cb901 100644
      }
      if (ch) {
  	ev->trans_chars[0] = ch;
-@@ -2261,6 +2274,14 @@ doNormalKeyEvent:
+@@ -2261,6 +2280,14 @@ doNormalKeyEvent:
  	    EVLOG("EV=WINDOWEVENT_SIZE_CHANGED");
  	    width = sdl_event->window.data1;
  	    height = sdl_event->window.data2;
@@ -88,7 +107,7 @@ index 47c3aadb..352cb901 100644
  	    if (SdlTkX.root_w) {
  		SDL_GetWindowSize(SdlTkX.sdlscreen, &oldw, &oldh);
  	    } else {
-@@ -2382,7 +2403,9 @@ doNormalKeyEvent:
+@@ -2382,7 +2409,9 @@ doNormalKeyEvent:
  #ifdef ANDROID
  				   0x00, 0x00, 0x00
  #else
@@ -99,7 +118,7 @@ index 47c3aadb..352cb901 100644
  #endif
  				   );
  		if (width > oldw) {
-@@ -2955,11 +2978,14 @@ SdlTkVisRgnChanged(_Window *_w, int flags, int x, int y)
+@@ -2955,11 +2984,14 @@ SdlTkVisRgnChanged(_Window *_w, int flags, int x, int y)
      /* If areas of the root window were exposed, paint them now */
      if (SdlTkX.screen_dirty_region &&
  	!XEmptyRegion(SdlTkX.screen_dirty_region)) {
@@ -115,7 +134,7 @@ index 47c3aadb..352cb901 100644
  #endif
  				  );
  
-@@ -4415,6 +4441,81 @@ done:
+@@ -4415,6 +4447,81 @@ done:
      return ret;
  }
  
@@ -197,7 +216,7 @@ index 47c3aadb..352cb901 100644
  static int
  PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
  		int objc, Tcl_Obj *const objv[])
-@@ -4427,9 +4528,32 @@ PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
+@@ -4427,9 +4534,32 @@ PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
  	Tcl_WrongNumArgs(interp, 1, objv, "");
  	return TCL_ERROR;
      }
@@ -230,7 +249,7 @@ index 47c3aadb..352cb901 100644
      Tcl_AppendElement(interp, "state");
      switch (pst) {
      case SDL_POWERSTATE_ON_BATTERY:
-@@ -4457,6 +4581,125 @@ PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
+@@ -4457,6 +4587,125 @@ PowerinfoObjCmd(ClientData clientData, Tcl_Interp *interp,
      return TCL_OK;
  }
  
@@ -356,7 +375,7 @@ index 47c3aadb..352cb901 100644
  static int
  RestoreObjCmd(ClientData clientData, Tcl_Interp *interp,
  	       int objc, Tcl_Obj *const objv[])
-@@ -4546,6 +4789,20 @@ SizeObjCmd(ClientData clientData, Tcl_Interp *interp,
+@@ -4546,6 +4795,20 @@ SizeObjCmd(ClientData clientData, Tcl_Interp *interp,
      return TCL_OK;
  }
  
@@ -377,7 +396,7 @@ index 47c3aadb..352cb901 100644
  static int
  ScreensaverObjCmd(ClientData clientData, Tcl_Interp *interp,
  		  int objc, Tcl_Obj *const objv[])
-@@ -4971,6 +5228,7 @@ static const TkEnsemble sdltkCmdMap[] = {
+@@ -4971,6 +5234,7 @@ static const TkEnsemble sdltkCmdMap[] = {
      { "accelerometer", AccelerometerObjCmd, NULL },
      { "addfont", AddfontObjCmd, NULL },
      { "android", AndroidObjCmd, NULL },
@@ -385,7 +404,7 @@ index 47c3aadb..352cb901 100644
      { "deiconify", DeiconifyObjCmd, NULL },
      { "expose", ExposeObjCmd, NULL },
      { "fonts", FontsObjCmd, NULL },
-@@ -4991,6 +5249,7 @@ static const TkEnsemble sdltkCmdMap[] = {
+@@ -4991,6 +5255,7 @@ static const TkEnsemble sdltkCmdMap[] = {
      { "restore", RestoreObjCmd, NULL },
      { "root", RootObjCmd, NULL },
      { "screensaver", ScreensaverObjCmd, NULL },
