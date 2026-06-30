@@ -85,3 +85,43 @@ native dep — BLT, Img/img::jpeg (+all formats), sqlite3, tls, tdom, tksvg, Tkt
 Itcl, zint, Borg, Ble, Thread. Remaining failures are non-de1app pure-Tcl companion-script
 placement (tclvfs::template/*, ral, tclcsv, trofs, topcua). Tk exts need `*_LIBRARY` env
 (ITCL_LIBRARY/ITK_LIBRARY/TREECTRL_LIBRARY/VU_LIBRARY) set to their package dir.
+
+## M2 — de1app running on the iPad mini 1
+
+`scripts/build-de1app-armv7.sh` → `dist/IwishDE1-armv7.app` (65M). de1app boots, renders its
+GUI, and runs on the jailbroken iPad mini 1 (iPad2,5, A5, 512MB, iOS 9.3.5).
+
+**Split layout** (system `/` had only ~196M free, so the 433M de1plus tree cannot live in the
+app bundle):
+- app (65M) → `/Applications/IwishDE1.app`: armv7 `sdl2wish` (renamed `IwishDE1`),
+  `lib/{tcl8.6,tk8.6}`, `lib-batteries` (the armv7 battery packages), `libhardexit.dylib`
+  (+ `lib-batteries/hardexit/pkgIndex.tcl`), a thin launcher `main.tcl`, `Info.plist`
+  (`com.decent.de1app`, BLE usage keys, landscape, URL scheme `de1app://`).
+- de1plus (433M, the arch-independent curated `de1plus` tree, reused as-is) → `/private/var/de1plus`.
+- writable home → `~/Documents/Decent` (ios.tcl seeds it on first run).
+
+The launcher sources de1plus from `/private/var/de1plus`; `ios.tcl` recomputes `$::home` via
+`file dirname [info script]`, so it resolves there automatically. Launch with `uiopen de1app://run`.
+`scripts/hardexit.c` builds the armv7 `libhardexit.dylib` (`clang -dynamiclib -arch armv7
+-include unistd.h ... build/awtcl-armv7/libtclstub8.6.a`); de1app's `ios_install_hardexit`
+routes `exit` through it.
+
+**Result:** iOS detection, full data-tree seeding, hardexit load, all native batteries, and GUI
+rendering (sdl2tk AGG software rasterizer + SDL software blits, presented via GLES2 — the A5 has
+no Metal) all work, confirmed by on-device `spindump` (`ImgPhotoPutResizedRotatedBlock` at startup,
+then `doDrawRect<agg::pixfmt_alpha_blend_rgba>` + `SDL_Blit_*_Modulate_Blend` steady state).
+
+**Performance** is the limiting factor: startup is multi-minute (Tk photo-image scaling of skin
+assets pegs both A5 cores; iOS logs non-fatal `EXC_RESOURCE CPU` watchdog warnings, not crashes),
+and steady state holds ~0.7–0.8 of one core in software compositing. Memory is tight (~58MB free,
+heavy VM-compressor churn) but does not jetsam. Functional proof-of-concept; not snappy. The clear
+next optimization is pre-scaling the skin PNGs to 1024×768 once (or a lighter skin) to cut the boot.
+
+**BLE** is bundled (Ble ext + de1app stack) but was not interactively confirmed: CoreBluetooth's
+first-use permission prompt needs a human tap and no DE1 is paired in this setup.
+
+Device debugging notes: the device lacks `head`/`tail`/`wc`/`du`/`syslog`; use `spindump <pid>
+<secs> <ms> -stdout` then pull and symbolicate with `atos -arch armv7`. de1app's `log.txt` is
+64KB-buffered (stays 0 until flush) — on iOS it logs via `borg log`→NSLog. The unbuffered
+`~/Documents/Decent/de1_exit.log` and the launcher's `/var/mobile/Documents/de1_launch.log` are
+the reliable traces. The app runs as user `mobile` (HOME=/var/mobile).
