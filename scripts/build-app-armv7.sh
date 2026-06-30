@@ -60,6 +60,48 @@ if {[file exists /tmp/iwish_runtk]} {
     ::__real_exit 0
 }
 
+if {[file exists /tmp/iwish_runbat]} {
+    # Battery load-test under wish (Tk present). Tests every package incl. Tk exts.
+    set lib /tmp/iWish-batteries-armv7/lib
+    # recursive auto_path: every dir with a pkgIndex (tcllib modules are nested e.g. tcllib1.21/snit)
+    proc addpaths {dir} {
+        foreach sub [glob -nocomplain -type d -directory $dir *] {
+            if {[file exists [file join $sub pkgIndex.tcl]]} { lappend ::auto_path $sub }
+            addpaths $sub
+        }
+    }
+    addpaths $lib
+    foreach {var dir} {ITCL_LIBRARY itcl4.2.0 ITK_LIBRARY itk TREECTRL_LIBRARY tktreectrl VU_LIBRARY vu TROFS_LIBRARY trofs} {
+        if {[file isdirectory $lib/$dir]} { set ::env($var) $lib/$dir }
+    }
+    set out [open /tmp/iwish_bat_results.txt a]; fconfigure $out -buffering none
+    set pkgs {}
+    foreach pf [lsort [glob -nocomplain -directory $lib -join * pkgIndex.tcl]] {
+        set fh [open $pf]; set txt [read $fh]; close $fh
+        foreach {m name ver} [regexp -all -inline {package ifneeded (\S+) (\S+)} $txt] { lappend pkgs $name }
+    }
+    # also nested (tcllib modules)
+    foreach pf [glob -nocomplain -directory $lib -join * * pkgIndex.tcl] {
+        set fh [open $pf]; set txt [read $fh]; close $fh
+        foreach {m name ver} [regexp -all -inline {package ifneeded (\S+) (\S+)} $txt] { lappend pkgs $name }
+    }
+    # crash-resumable: a segfaulting package would abort the run; record the current pkg
+    # (flushed) so a relaunch can skip it, and persist a done-set to resume.
+    set skip {}; catch {set fh [open /tmp/iwish_bat_skip r]; set skip [read $fh]; close $fh}
+    set done {}; catch {set fh [open /tmp/iwish_bat_done_pkgs r]; set done [read $fh]; close $fh}
+    set ok 0; set fail 0
+    foreach name [lsort -unique $pkgs] {
+        if {[lsearch -exact $skip $name] >= 0} { puts $out "SKIP $name"; continue }
+        if {[lsearch -exact $done $name] >= 0} { continue }
+        set cf [open /tmp/iwish_bat_cur w]; puts $cf $name; close $cf
+        if {[catch {package require $name} e]} { puts $out "FAIL $name: [string range $e 0 80]"; incr fail } else { puts $out "OK   $name"; incr ok }
+        set df [open /tmp/iwish_bat_done_pkgs a]; puts $df $name; close $df
+    }
+    puts $out "=== batteries: $ok ok, $fail fail (this run) ==="; close $out
+    set f [open /tmp/iwish_bat_done w]; puts $f done; close $f
+    exit 0
+}
+
 # default: a simple Tk demo proving rendering works
 wm title . "iWish armv7 / iOS9"
 label .l -text "iWish on iOS 9 (armv7)\nTcl/Tk [info patchlevel]" -font {Helvetica 28} -justify center

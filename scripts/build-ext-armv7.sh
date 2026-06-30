@@ -27,7 +27,7 @@ make distclean >/dev/null 2>&1 || true
 find . -maxdepth 2 -name '*.dylib' -delete 2>/dev/null || true   # drop stale (arm64) dylib
 
 export CC CXX
-export CFLAGS="$ARCH -fPIC -DTCL_UTF_MAX=6 -I$TCLINC -I$TKINC -I$ROOT/src/androwish/jni/sdl2tk/xlib ${EXTRA_CFLAGS:-}"
+export CFLAGS="$ARCH -fPIC -DTCL_UTF_MAX=6 -I$TCLINC -I$TKINC -I$ROOT/src/androwish/jni/sdl2tk/xlib -I$ROOT/src/SDL2-2.30.11/include ${EXTRA_CFLAGS:-}"
 export CXXFLAGS="$CFLAGS"
 export CPPFLAGS="$ARCH"
 export LDFLAGS="$LINKF ${EXTRA_LDFLAGS:-}"
@@ -41,6 +41,8 @@ export LDFLAGS="$LINKF ${EXTRA_LDFLAGS:-}"
 echo "=== CONFIGURE EXIT: ${PIPESTATUS[0]} ==="
 # TEA links Tk extensions against -ltk8.6 / sdl2tk/unix; fix for sdl2tk
 perl -pi -e 's/-ltk8\.6/-lsdl2tkstub8.6/g; s@sdl2tk/unix@sdl2tk/sdl@g; s/-ltkstub8\.6/-lsdl2tkstub8.6/g' Makefile 2>/dev/null
+# strip host x86 /usr/local SDL2 headers (their SDL_cpuinfo.h pulls x86 immintrin.h)
+perl -pi -e 's@-I/usr/local/include/SDL2@@g; s@-I/usr/local/include\b@@g' Makefile 2>/dev/null
 echo "=== make ==="
 make 2>&1 | grep -iE "error:|Relocation|\.dylib|undefined symbol|symbol.* not found" | grep -viE 'tbd file|Simulator|ld_classic is dep' | head -20
 echo "=== result dylib(s) ==="
