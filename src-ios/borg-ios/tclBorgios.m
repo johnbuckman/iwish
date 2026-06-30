@@ -173,7 +173,11 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
         onMain(^{
             NSURL *url = [NSURL URLWithString:u];
             if (url) {
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 100000
                 [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+#else
+                [[UIApplication sharedApplication] openURL:url];   /* iOS 9 */
+#endif
             }
         });
         return TCL_OK;
@@ -283,7 +287,10 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
                 NSString *m = [NSString stringWithUTF8String:Tcl_GetString(objv[2])];
                 if (m) {
                     dispatch_async(dispatch_get_main_queue(), ^{
-                        /* find the foreground window scene */
+                        /* lazily create a transparent, non-interactive overlay
+                         * window above SDL's so the toast composites on screen */
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 130000
+                        /* find the foreground window scene (iOS 13+) */
                         UIWindowScene *ws = nil;
                         for (UIScene *sc in [UIApplication sharedApplication].connectedScenes) {
                             if (![sc isKindOfClass:[UIWindowScene class]]) continue;
@@ -291,8 +298,6 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
                             if (sc.activationState == UISceneActivationStateForegroundActive) break;
                         }
                         if (!ws) return;
-                        /* lazily create a transparent, non-interactive overlay
-                         * window above SDL's so the toast composites on screen */
                         if (gToastWindow == nil) {
                             gToastWindow = [[UIWindow alloc] initWithWindowScene:ws];
                             gToastWindow.windowLevel = UIWindowLevelAlert + 1;
@@ -302,6 +307,18 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
                             gToastWindow.hidden = NO;   /* show without becoming key (SDL keeps key) */
                         }
                         gToastWindow.frame = ws.coordinateSpace.bounds;
+#else
+                        /* iOS 9: no UIScene; overlay window from the main screen bounds */
+                        if (gToastWindow == nil) {
+                            gToastWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+                            gToastWindow.windowLevel = UIWindowLevelAlert + 1;
+                            gToastWindow.backgroundColor = [UIColor clearColor];
+                            gToastWindow.userInteractionEnabled = NO;
+                            gToastWindow.rootViewController = [UIViewController new];
+                            gToastWindow.hidden = NO;
+                        }
+                        gToastWindow.frame = [UIScreen mainScreen].bounds;
+#endif
                         gToastWindow.rootViewController.view.frame = gToastWindow.bounds;
                         [gToastWindow.rootViewController.view makeToast:m];
                     });

@@ -60,3 +60,28 @@ scheme: `uiopen iwish://run` (uiopen can't launch by bundle id). Tcl-only work r
 over SSH with the bundled `tclsh`; the Tk GUI must run under SpringBoard.
 ```
 ```
+
+## Batteries (AndroWish extensions) for armv7/iOS9
+
+Build extensions to loadable armv7 dylibs (NDK-compile + Apple/ld_classic link, theos SDK,
+TCL_UTF_MAX=6, 32-bit ABI cache, clang16+ -Wno-error downgrades):
+- `scripts/build-ext-armv7.sh <extdir> [cfg args]` — one TEA extension.
+- `scripts/build-allexts-armv7.sh` — batch of dep-free exts (sqlite3, tdom, thread, itcl,
+  tksvg, tktable, tktreectrl, rl_json, nsf, vu, tkled, pikchr, lmdb, … — 25 build clean).
+- `scripts/build-blt-armv7.sh` — BLT 2.4 (tkblt, de1app shot graph). CRITICAL armv7 ABI cache
+  void_p=4; drop `-Dfinite=isfinite` (the 9.3 math.h declares `finite`); `make -C src build_shared`.
+- `scripts/build-shims-armv7.sh` — borg + ble ObjC shims (Apple clang armv7 directly).
+- `scripts/build-libressl-armv7.sh` + `build-tls-armv7.sh` — tls via static LibreSSL
+  (`make -C include` FIRST to generate opensslconf.h; `endian_compat.c` provides be32toh etc.).
+- tkimg (img::jpeg + 24 handler/codec dylibs): `build-ext-armv7.sh tkimg` with
+  `EXTRA_CFLAGS=-DPNG_ARM_NEON_OPT=0` (bundled zlib/libpng/libtiff/libjpeg).
+- zint: `build-ext-armv7.sh zint/backend_tcl`.
+- sqlite3 needs `ac_cv_func_strchrnul=no` (iOS lacks strchrnul; use sqlite's built-in fallback).
+- `scripts/build-batteries-armv7.sh` — collect all dylibs + pkgIndex + companion .tcl into
+  `dist/iWish-batteries-armv7/lib/<pkg>/`.
+
+Verified on the iPad mini 1 (load-test under wish): **55 packages load**, including every de1app
+native dep — BLT, Img/img::jpeg (+all formats), sqlite3, tls, tdom, tksvg, Tktable, treectrl, vu,
+Itcl, zint, Borg, Ble, Thread. Remaining failures are non-de1app pure-Tcl companion-script
+placement (tclvfs::template/*, ral, tclcsv, trofs, topcua). Tk exts need `*_LIBRARY` env
+(ITCL_LIBRARY/ITK_LIBRARY/TREECTRL_LIBRARY/VU_LIBRARY) set to their package dir.

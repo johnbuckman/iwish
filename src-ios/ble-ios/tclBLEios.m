@@ -33,6 +33,9 @@
 #include <tcl.h>
 #import <Foundation/Foundation.h>
 #import <CoreBluetooth/CoreBluetooth.h>
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 100000  /* iOS 9 SDK: CBManagerState* was CBCentralManagerState* */
+#define CBManagerStatePoweredOn CBCentralManagerStatePoweredOn
+#endif
 
 /* ---- cross-thread event marshalling ------------------------------------ */
 
