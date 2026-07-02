@@ -10,11 +10,10 @@ WebView, no native-UIKit-widget bridge, just the actual Tk canvas/widgets
 composited onto an SDL2 Metal surface.
 
 > **Status: 0.1 — alpha.** The runtime is real and complete enough to run a
-> large third-party Tk application: Decent Espresso's
-> [`de1app`](https://github.com/decentespresso/de1app) boots end-to-end on a
-> physical iPad and talks to espresso-machine hardware over CoreBluetooth. APIs,
-> the build layout, and the bundled extension set are still in flux. Expect
-> sharp edges. See [`BUGS.md`](BUGS.md) and [`TODO.md`](TODO.md).
+> large, real-world third-party Tk application end-to-end on a physical iPad —
+> full GUI, the batteries-included extension set, and talking to hardware over
+> CoreBluetooth. APIs, the build layout, and the bundled extension set are still
+> in flux. Expect sharp edges. See [`BUGS.md`](BUGS.md) and [`TODO.md`](TODO.md).
 
 This repo is a **recipe**: build scripts, a set of patches against upstream, and
 the iOS-native glue code. It does **not** redistribute the AndroWish, SDL2, or

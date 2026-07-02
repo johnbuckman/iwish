@@ -74,7 +74,7 @@ TCL_UTF_MAX=6, 32-bit ABI cache, clang16+ -Wno-error downgrades):
 - `scripts/build-extras-armv7.sh` — the rest (itk, tdbc, imgjp2, tkvnc, tkpath, tcl-stbimage,
   tkhtml). **itk needs `--with-itcl=<…/tcl/pkgs/itcl4.2.0>`** (else configure can't find
   `itclConfig.sh` and never writes a Makefile → no dylib).
-- `scripts/build-blt-armv7.sh` — BLT 2.4 (tkblt, de1app shot graph). CRITICAL armv7 ABI cache
+- `scripts/build-blt-armv7.sh` — BLT 2.4 (tkblt; real-time graphs/plots). CRITICAL armv7 ABI cache
   void_p=4; drop `-Dfinite=isfinite` (the 9.3 math.h declares `finite`); `make -C src build_shared`.
 - `scripts/build-shims-armv7.sh` — borg + ble ObjC shims (Apple clang armv7 directly).
 - `scripts/build-libressl-armv7.sh` + `build-tls-armv7.sh` — tls via static LibreSSL
@@ -96,89 +96,74 @@ TCL_UTF_MAX=6, 32-bit ABI cache, clang16+ -Wno-error downgrades):
   `pkgIndex.tcl`, resolves each `[file join $dir …]` source/load target, and reports any missing
   file. Run it after `build-batteries-armv7.sh` (expected: `0 have missing source/load targets`).
 
-**111 packages assembled; verifier reports 0 missing source/load targets.** Every de1app native
-dep loads on the iPad mini 1 under wish — BLT, Img/img::jpeg (+all formats), sqlite3, tls, tdom,
-tksvg, Tktable, treectrl, vu, Itcl, Itk, zint, Borg, Ble, Thread. Also builds: tkhtml, tkpath,
+**111 packages assembled; verifier reports 0 missing source/load targets.** The native
+extensions load on the iPad mini 1 under wish — BLT, Img/img::jpeg (+all formats), sqlite3, tls,
+tdom, tksvg, Tktable, treectrl, vu, Itcl, Itk, zint, Borg, Ble, Thread. Also builds: tkhtml, tkpath,
 tkvnc, imgjp2, tcl-stbimage, tdbc(+sqlite3), TclCurl, iwidgets (on itk). Tk/`tcl_findLibrary` exts
 need their `*_LIBRARY` env (ITCL_LIBRARY/ITK_LIBRARY/TREECTRL_LIBRARY/VU_LIBRARY) set to the
 package dir. `tdbc::sqlite3` is pure-Tcl (no dylib — don't treat "no arm_v7 dylib" as a failure).
 
-## M2 — de1app running on the iPad mini 1
+## Running a large Tk application
 
-`scripts/build-de1app-armv7.sh` → `dist/IwishDE1-armv7.app` (65M). de1app boots, renders its
-GUI, and runs on the jailbroken iPad mini 1 (iPad2,5, A5, 512MB, iOS 9.3.5).
+The stack runs more than demos: a large, real-world third-party Tk application (a 400 MB+
+data/asset tree) boots, renders its full GUI, and runs on the jailbroken iPad mini 1
+(iPad2,5, A5, 512 MB, iOS 9.3.5). Notes from getting one working:
 
-**Split layout** (system `/` had only ~196M free, so the 433M de1plus tree cannot live in the
-app bundle):
-- app (65M) → `/Applications/IwishDE1.app`: armv7 `sdl2wish` (renamed `IwishDE1`),
-  `lib/{tcl8.6,tk8.6}`, `lib-batteries` (the armv7 battery packages), `libhardexit.dylib`
-  (+ `lib-batteries/hardexit/pkgIndex.tcl`), a thin launcher `main.tcl`, `Info.plist`
-  (`com.decent.de1app`, BLE usage keys, landscape, URL scheme `de1app://`).
-- de1plus (433M, the arch-independent curated `de1plus` tree, reused as-is) → `/private/var/de1plus`.
-- writable home → `~/Documents/Decent` (ios.tcl seeds it on first run).
+**Split layout for big asset trees.** When an app's data/asset tree is too large to live
+inside the `.app` bundle (a jailbroken system volume can be nearly full), install it separately:
+- the app bundle → `/Applications/<App>.app`: the armv7 `sdl2wish`, `lib/{tcl8.6,tk8.6}`,
+  `lib-batteries` (the armv7 battery packages), an optional `libhardexit.dylib`, a thin launcher
+  `main.tcl`, and an `Info.plist` (BLE usage keys, orientation, and a `<scheme>://` URL scheme).
+- the data/asset tree (arch-independent) → `/private/var/<app>` (ample free space there).
+- a writable home → the app's `~/Documents/<app>` (seed it on first run).
 
-The launcher sources de1plus from `/private/var/de1plus`; `ios.tcl` recomputes `$::home` via
-`file dirname [info script]`, so it resolves there automatically. Launch with `uiopen de1app://run`.
-`scripts/hardexit.c` builds the armv7 `libhardexit.dylib` (`clang -dynamiclib -arch armv7
--include unistd.h ... build/awtcl-armv7/libtclstub8.6.a`); de1app's `ios_install_hardexit`
-routes `exit` through it.
+The launcher sources the app from its `/private/var` location; compute the app's home with
+`file dirname [info script]` so paths resolve wherever the tree lives. Launch via SpringBoard
+with `uiopen <scheme>://run` (`uiopen` can't launch by bundle id). `scripts/hardexit.c` builds an
+armv7 `libhardexit.dylib` — a clean way to route a Tcl `exit` through `_exit()` and terminate an
+SDL/Tk app immediately on iOS.
 
-**Result:** iOS detection, full data-tree seeding, hardexit load, all native batteries, and GUI
-rendering (sdl2tk AGG software rasterizer + SDL software blits, presented via GLES2 — the A5 has
-no Metal) all work, confirmed by on-device `spindump` (`ImgPhotoPutResizedRotatedBlock` at startup,
-then `doDrawRect<agg::pixfmt_alpha_blend_rgba>` + `SDL_Blit_*_Modulate_Blend` steady state).
+**Rendering & performance.** The GUI is composited by sdl2tk's AGG software rasterizer + SDL
+software blits, presented via GLES2 (the A5 has no Metal) — confirmed by on-device `spindump`
+(`doDrawRect<agg::pixfmt_alpha_blend_rgba>` + `SDL_Blit_*_Modulate_Blend`). Startup can be
+multi-minute if the app scales many large images at launch (`ImgPhotoPutResizedRotatedBlock` pegs
+both A5 cores; iOS logs non-fatal `EXC_RESOURCE CPU` watchdog warnings, not crashes). Steady state
+holds ~0.7–0.8 of one core in software compositing; memory is tight (~58 MB free, heavy
+VM-compressor churn) but does not jetsam. Pre-scaling large image assets to the screen resolution
+once is the clear win. Functional, but not snappy on this hardware.
 
-**Performance** is the limiting factor: startup is multi-minute (Tk photo-image scaling of skin
-assets pegs both A5 cores; iOS logs non-fatal `EXC_RESOURCE CPU` watchdog warnings, not crashes),
-and steady state holds ~0.7–0.8 of one core in software compositing. Memory is tight (~58MB free,
-heavy VM-compressor churn) but does not jetsam. Functional proof-of-concept; not snappy. The clear
-next optimization is pre-scaling the skin PNGs to 1024×768 once (or a lighter skin) to cut the boot.
+**Device debugging.** The device lacks `head`/`tail`/`wc`/`du`/`syslog`; use
+`spindump <pid> <secs> <ms> -stdout`, pull, and symbolicate with `atos -arch armv7`. The app runs
+as user `mobile` (HOME=/var/mobile). Prefer unbuffered log files: `borg log`→NSLog is reliable,
+whereas a plain `log.txt` may be 64 KB-buffered and read as empty until it flushes.
 
-**BLE** is bundled (Ble ext + de1app stack) but was not interactively confirmed: CoreBluetooth's
-first-use permission prompt needs a human tap and no DE1 is paired in this setup.
+## iOS-specific fixes (borg / SDL / status bar / BLE)
 
-Device debugging notes: the device lacks `head`/`tail`/`wc`/`du`/`syslog`; use `spindump <pid>
-<secs> <ms> -stdout` then pull and symbolicate with `atos -arch armv7`. de1app's `log.txt` is
-64KB-buffered (stays 0 until flush) — on iOS it logs via `borg log`→NSLog. The unbuffered
-`~/Documents/Decent/de1_exit.log` and the launcher's `/var/mobile/Documents/de1_launch.log` are
-the reliable traces. The app runs as user `mobile` (HOME=/var/mobile).
-
-## M3 — on-device de1app polish (brightness, status bar, BLE)
-
-Subsequent builds tightened three rough edges found while running de1app on the jailbroken
-iPad mini 1. All changes are in `src-ios/borg-ios/tclBorgios.m`, `src-ios/ble-ios/tclBLEios.m`,
-`patches/sdl2-ios9/`, and the `Info.plist` emitted by `build-de1app-armv7.sh` /
-`build-app-armv7.sh`.
+Rough edges tightened while running real applications. All changes are in
+`src-ios/borg-ios/tclBorgios.m`, `src-ios/ble-ios/`, `patches/sdl2-ios9/`, and the emitted
+`Info.plist`:
 
 1. **Toast grey-rectangle artifact — fixed.** The iOS `borg toast` SDL-layer geometry was re-synced
 to the C present-layer blit (see `tclBorgios.m` `_toast_sdl`).
 
-2. **Brightness "randomly" changing — fixed.** `borg systemui` already set
-`UIApplication.idleTimerDisabled=YES`, but de1app's call path may be Android-gated on iOS. Added
-an unconditional `application.idleTimerDisabled = YES` in SDL's
-`application:didFinishLaunchingWithOptions:` and a redundant set in `Borg_Init` so the screen
-stays awake regardless of whether `borg systemui` is reached.
+2. **Screen dimming / auto-lock — fixed.** Set `UIApplication.idleTimerDisabled = YES`
+unconditionally in SDL's `application:didFinishLaunchingWithOptions:` and again in `Borg_Init`, so
+the screen stays awake regardless of whether `borg systemui` is reached.
 
-3. **Status bar (wifi/time) showing — fixed.** The previous `UIStatusBarHidden=true` +
-`UIViewControllerBasedStatusBarAppearance=false` combination did not hide the bar because SDL only
-sets `UIApplication.statusBarHidden` when a launch storyboard is present. Added an explicit
-`[application setStatusBarHidden:YES animated:NO]` in SDL's app delegate and again in SDL's view
-controller `viewDidLayoutSubviews`, and flipped `UIViewControllerBasedStatusBarAppearance` to
-`true` so SDL's `prefersStatusBarHidden=YES` also governs.
+3. **Status bar (wifi/time) showing — fixed.** `UIStatusBarHidden=true` alone did not hide the bar
+because SDL only sets `UIApplication.statusBarHidden` when a launch storyboard is present. Added an
+explicit `[application setStatusBarHidden:YES animated:NO]` in SDL's app delegate and again in the
+view controller's `viewDidLayoutSubviews`, and set `UIViewControllerBasedStatusBarAppearance=true`
+so SDL's `prefersStatusBarHidden=YES` also governs.
 
-4. **BLE discovery — improved diagnostics, still hardware-limited.** The BLE shim was made
-portable (TARGET_OS guards + log-path macro) and the `CBCentralManager` is now created synchronously
-on the calling thread with a dedicated delegate queue (the previous "create on delegate queue"
-pattern left XPC half-wired). Scan now passes
-`CBCentralManagerScanOptionAllowDuplicatesKey=@YES` and a `ble state` subcommand was added for
-cleaner bootstrap. On the iPad mini 1 the scan reaches `poweredOn` and `isScanning=1` but still
-receives zero advertisements; this points to the iOS 9 Bluetooth stack / radio on that specific
-device and is best verified by completing the macOS reference test (host with
-`NSBluetoothAlwaysUsageDescription`).
+4. **BLE discovery.** The `ble` shim creates `CBCentralManager` synchronously on the calling thread
+with a dedicated delegate queue (the previous "create on the delegate queue" pattern left XPC
+half-wired), scans with `CBCentralManagerScanOptionAllowDuplicatesKey=@YES`, and adds a `ble state`
+subcommand for cleaner bootstrap. Note that iOS only delivers advertisements to a **foreground app
+with the screen on** — see [IOS9-BLE.md](IOS9-BLE.md) for the full story.
 
-**To deploy the M3 fixes:** rebuild the foundation (`build-device-armv7.sh`), rebuild the
-shims (`build-shims-armv7.sh`), rebuild the app bundles (`build-app-armv7.sh` and/or
-`build-de1app-armv7.sh`), re-sign with `ldid`, push to the device, and run `uicache -p` before
-cold-launching. Verify dylib freshness by md5-comparing the on-device dylib to the freshly-built
-one.
+**To deploy fixes:** rebuild the foundation (`build-device-armv7.sh`), the shims
+(`build-shims-armv7.sh`), and the app bundle (`build-app-armv7.sh`), re-sign with `ldid`, push to
+the device, and run `uicache -p` before cold-launching. Verify dylib freshness by md5-comparing the
+on-device dylib to the freshly-built one.
 

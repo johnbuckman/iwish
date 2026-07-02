@@ -3,8 +3,8 @@
 The iWish borg (`tclBorgios.m`) implements `borg osbuildinfo`, which returns a
 flat Tcl dict modeled on Android's `android.os.Build.*`. **Every AndroWish-family
 build fills these standard keys with real values for its platform**, so callers
-(e.g. de1app) can identify the platform from the existing keys alone — no extra
-or custom key is added.
+can identify the platform from the existing keys alone — no extra or custom key
+is added.
 
 This file documents the contract across all builds so the iWish, undroidwish
 (macOS desktop), and Android implementations stay consistent.
@@ -65,14 +65,12 @@ Resulting matrix:
   There is no Apple equivalent, so it is `0` on Apple builds. Likewise the
   strongest "this is Android" tells in the table are `version.sdk` (a real API
   level), the Android-format `fingerprint`, and `cpu_abi arm64-v8a`.
-- **Android itself is not detected via osbuildinfo** by de1app — it uses the
-  presence of the real `ble`/`BLT` packages. osbuildinfo's job here is to split
-  the Apple builds (iOS vs Catalyst vs desktop).
+- **Android itself is not necessarily detected via osbuildinfo** — a caller can
+  instead key off the presence of the real `ble`/`BLT` packages. osbuildinfo's
+  job here is to split the Apple builds (iOS vs Catalyst vs desktop).
 
 ## Where this is implemented
 
 - iWish (iOS/iPadOS/Catalyst): [`tclBorgios.m`](tclBorgios.m), `osbuildinfo` case.
 - macOS desktop (undroidwish): `jni/src/tkBorgOSX.c` `BorgOSBuildInfo()` — see
   [`undroidwish-arm64-batteries-included` / `BORG-OSX.md`](https://github.com/johnbuckman/undroidwish-arm64-batteries-included/blob/main/BORG-OSX.md).
-- de1app consumer: `de1plus/ios.tcl` (sets `::iwish`/`::ios`) and
-  `de1plus/utils.tcl` (`running_on_ios`).

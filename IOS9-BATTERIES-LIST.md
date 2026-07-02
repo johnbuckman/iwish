@@ -26,7 +26,7 @@ one exists, otherwise a wiki search for niche packages.
 
 | Package | Version | Notes |
 |---|---|---|
-| [`Ble`](https://wiki.tcl-lang.org/search?q=Ble) | 1.0 | Bluetooth Low Energy central: scan for peripherals, connect, and read/write GATT characteristics (iWish's iOS CoreBluetooth shim — how de1app talks to the DE1 machine) |
+| [`Ble`](https://wiki.tcl-lang.org/search?q=Ble) | 1.0 | Bluetooth Low Energy central: scan for peripherals, connect, and read/write GATT characteristics (iWish's iOS CoreBluetooth shim) |
 | [`Borg`](https://wiki.tcl-lang.org/search?q=Borg) | 1.0 | native OS bridge: toast notifications, screen brightness, keep-awake, share sheet, system UI, sensors, device info (the AndroWish `borg` command, iOS build) |
 
 ## Tk widgets & themes
@@ -59,7 +59,7 @@ one exists, otherwise a wiki search for niche packages.
 
 | Package | Version | Notes |
 |---|---|---|
-| [`BLT`](https://wiki.tcl-lang.org/page/BLT) | 2.4 | graph/barchart/vector/spline + table layout toolkit (de1app's shot graph uses it) |
+| [`BLT`](https://wiki.tcl-lang.org/page/BLT) | 2.4 | graph/barchart/vector/spline + table layout toolkit (real-time line graphs, plots) |
 | [`can2svg`](https://wiki.tcl-lang.org/search?q=can2svg) | 0.3 | export a Tk canvas to an SVG file |
 | [`colorutils`](https://wiki.tcl-lang.org/search?q=colorutils) | 4.8 | colour-space conversions and colour manipulation helpers |
 | [`pikchr`](https://wiki.tcl-lang.org/search?q=pikchr) | 1.0 | render PIC-style "pikchr" diagram markup to SVG |
