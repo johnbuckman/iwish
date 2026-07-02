@@ -1,8 +1,9 @@
 # iWish — Tcl/Tk 8.6 with batteries, on a jailbroken iOS 9.3.5 device (32-bit / armv7)
 
 **iWish** is a full **Tcl/Tk 8.6** interpreter (the AndroWish-derived `sdl2wish`, rendering
-through SDL2/OpenGL ES 2 + AGG) with a large set of **batteries** — ~400 loadable
-extension packages — built for **32-bit A5/A5X devices on iOS 9.3.5**, the last iOS these
+through SDL2/OpenGL ES 2 + AGG) with a large set of **batteries** —
+**[~400 loadable extension packages](IOS9-BATTERIES-LIST.md)** — built for **32-bit
+A5/A5X devices on iOS 9.3.5**, the last iOS these
 devices can run. It lets you run Tcl scripts and Tk GUIs directly on the device.
 
 This document is the **device-setup + deployment + usage** guide: why it needs a
@@ -140,7 +141,8 @@ pack .l
 
 ## 7. Batteries included
 
-~**400 loadable packages** load on-device. Highlights:
+**[~400 loadable packages](IOS9-BATTERIES-LIST.md)** load on-device — see the
+[full grouped list](IOS9-BATTERIES-LIST.md) for every one. Highlights:
 
 - **GUI / graphics:** Tk 8.6, **BLT / tkblt** (graphs), **Img / tkimg** (all image
   formats: JPEG, PNG, GIF, TIFF, BMP, …), **tksvg**, **Tktable**, **treectrl**, **vu**,
