@@ -1,0 +1,10 @@
+#!/usr/bin/expect -f
+# essh <remote command...>  -- ssh to jailbroken device via iproxy 2222, pw alpine
+set timeout 40
+set cmd [join $argv " "]
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p 2222 root@localhost $cmd
+expect {
+    -re {[Pp]assword:} { send "alpine\r"; exp_continue }
+    -re {yes/no} { send "yes\r"; exp_continue }
+    eof
+}

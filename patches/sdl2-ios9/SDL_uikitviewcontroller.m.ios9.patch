@@ -1,5 +1,5 @@
---- /Users/john/iwish/src/SDL2-2.30.11/src/video/uikit/SDL_uikitviewcontroller.m	2026-06-19 14:42:40
-+++ /Users/john/iwish-ios9/src/SDL2-2.30.11/src/video/uikit/SDL_uikitviewcontroller.m	2026-06-30 09:24:59
+--- a/src/video/uikit/SDL_uikitviewcontroller.m
++++ b/src/video/uikit/SDL_uikitviewcontroller.m
 @@ -54,6 +54,7 @@
      @autoreleasepool {
          SDL_uikitviewcontroller *viewcontroller = (__bridge SDL_uikitviewcontroller *) userdata;
@@ -32,3 +32,18 @@
      }
      return self;
  }
+@@ -234,11 +238,14 @@
+
+ #if !TARGET_OS_MACCATALYST
+     /* iwish: force iOS to re-query prefersStatusBarHidden (=YES) now that this
+-     * view controller is the window's root, so the status bar actually hides. */
++     * view controller is the window's root, so the status bar actually hides.
++     * Also force the app-level status bar hidden as a fallback for iOS 9 where
++     * the view-controller-driven appearance is unreliable. */
+     static BOOL iwishStatusBarUpdated = NO;
+     if (!iwishStatusBarUpdated) {
+         iwishStatusBarUpdated = YES;
+         [self setNeedsStatusBarAppearanceUpdate];
++        [[UIApplication sharedApplication] setStatusBarHidden:YES animated:NO];
+     }
+ #endif

@@ -125,3 +125,43 @@ Device debugging notes: the device lacks `head`/`tail`/`wc`/`du`/`syslog`; use `
 64KB-buffered (stays 0 until flush) — on iOS it logs via `borg log`→NSLog. The unbuffered
 `~/Documents/Decent/de1_exit.log` and the launcher's `/var/mobile/Documents/de1_launch.log` are
 the reliable traces. The app runs as user `mobile` (HOME=/var/mobile).
+
+## M3 — on-device de1app polish (brightness, status bar, BLE)
+
+Subsequent builds tightened three rough edges found while running de1app on the jailbroken
+iPad mini 1. All changes are in `src-ios/borg-ios/tclBorgios.m`, `src-ios/ble-ios/tclBLEios.m`,
+`patches/sdl2-ios9/`, and the `Info.plist` emitted by `build-de1app-armv7.sh` /
+`build-app-armv7.sh`.
+
+1. **Toast grey-rectangle artifact — fixed.** The iOS `borg toast` SDL-layer geometry was re-synced
+to the C present-layer blit (see `tclBorgios.m` `_toast_sdl`).
+
+2. **Brightness "randomly" changing — fixed.** `borg systemui` already set
+`UIApplication.idleTimerDisabled=YES`, but de1app's call path may be Android-gated on iOS. Added
+an unconditional `application.idleTimerDisabled = YES` in SDL's
+`application:didFinishLaunchingWithOptions:` and a redundant set in `Borg_Init` so the screen
+stays awake regardless of whether `borg systemui` is reached.
+
+3. **Status bar (wifi/time) showing — fixed.** The previous `UIStatusBarHidden=true` +
+`UIViewControllerBasedStatusBarAppearance=false` combination did not hide the bar because SDL only
+sets `UIApplication.statusBarHidden` when a launch storyboard is present. Added an explicit
+`[application setStatusBarHidden:YES animated:NO]` in SDL's app delegate and again in SDL's view
+controller `viewDidLayoutSubviews`, and flipped `UIViewControllerBasedStatusBarAppearance` to
+`true` so SDL's `prefersStatusBarHidden=YES` also governs.
+
+4. **BLE discovery — improved diagnostics, still hardware-limited.** The BLE shim was made
+portable (TARGET_OS guards + log-path macro) and the `CBCentralManager` is now created synchronously
+on the calling thread with a dedicated delegate queue (the previous "create on delegate queue"
+pattern left XPC half-wired). Scan now passes
+`CBCentralManagerScanOptionAllowDuplicatesKey=@YES` and a `ble state` subcommand was added for
+cleaner bootstrap. On the iPad mini 1 the scan reaches `poweredOn` and `isScanning=1` but still
+receives zero advertisements; this points to the iOS 9 Bluetooth stack / radio on that specific
+device and is best verified by completing the macOS reference test (host with
+`NSBluetoothAlwaysUsageDescription`).
+
+**To deploy the M3 fixes:** rebuild the foundation (`build-device-armv7.sh`), rebuild the
+shims (`build-shims-armv7.sh`), rebuild the app bundles (`build-app-armv7.sh` and/or
+`build-de1app-armv7.sh`), re-sign with `ldid`, push to the device, and run `uicache -p` before
+cold-launching. Verify dylib freshness by md5-comparing the on-device dylib to the freshly-built
+one.
+

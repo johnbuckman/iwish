@@ -80,7 +80,14 @@ static const char borgTkHelpers[] =
 "    set rid [::borg::ui::_roundrect $c 0 0 $W $H $r -fill #444444 -outline {} -tags bg]\n"
 "    $c lower $rid $tid\n"
 "    $c configure -width $W -height $H\n"
-"    wm geometry $t ${W}x${H}+[expr {($sw-$W)/2}]+[expr {int($sh*0.82)-$H/2}]\n"
+/* The toast's on-screen position is set by the SDL present-layer blit in
+ * SdlTkGfxDrawBorgToast() (dst.y = oh - dst.h - oh*0.02, i.e. ~2% above the
+ * bottom). This offscreen-capture toplevel MUST be placed at that same spot:
+ * for the one frame it exists before destroy, sdl2tk composites it un-chroma-
+ * keyed, so any divergence shows a stray grey rectangle at the toplevel's
+ * position (the bug seen when this was moved to 0.82). Keep it matched to the
+ * C blit (identical to the macOS tkBorgOSX.c geometry). */
+"    wm geometry $t ${W}x${H}+[expr {($sw-$W)/2}]+[expr {$sh-$H-int($sh*0.02)}]\n"
 "    update idletasks\n"
 "    sdltk borgtoast $c $ms\n"
 "  } emsg]\n"
@@ -229,13 +236,24 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
          * values. de1app reads: manufacturer "Apple"; product the friendly name
          * (iPad/iPhone/iPod/Mac); model the real id (iPad14,3 -> iOS, Mac.. ->
          * Catalyst). Platform detection uses manufacturer + model. */
+#if defined(__arm64__)
+        NSString *cpuAbi = @"arm64";
+#elif defined(__arm__)
+        NSString *cpuAbi = @"armv7";
+#elif defined(__x86_64__)
+        NSString *cpuAbi = @"x86_64";
+#elif defined(__i386__)
+        NSString *cpuAbi = @"i386";
+#else
+        NSString *cpuAbi = @"unknown";
+#endif
         NSString *result = [NSString stringWithFormat:
             @"manufacturer Apple brand Apple product %@ "
-             "model %@ device %@ board %@ hardware %@ cpu_abi arm64 cpu_abi2 {} "
+             "model %@ device %@ board %@ hardware %@ cpu_abi %@ cpu_abi2 {} "
              "version.codename REL version.release {%@} version.sdk 0 "
              "fingerprint {Apple/%@/%@:%@/0:user/release-keys} "
              "serial unknown tags release-keys type user radio {}",
-            product, model, model, model, model, rel, product, model, rel];
+            product, model, model, model, model, cpuAbi, rel, product, model, rel];
         Tcl_SetObjResult(ip, Tcl_NewStringObj([result UTF8String], -1));
         return TCL_OK;
     }
@@ -469,9 +487,21 @@ BorgCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
         return TCL_OK;
     }
 
+    if (strcmp(sub, "systemui") == 0) {
+        /* On Android `borg systemui <flags>` carries the immersive/keep-awake
+         * flags and de1app calls it on every page_onload (and the saver). The
+         * iOS analogue of FLAG_KEEP_SCREEN_ON is UIApplication.idleTimerDisabled:
+         * without it iOS runs its own Auto-Lock, dimming then locking the screen
+         * on a timer -- which the user sees as the brightness "randomly" changing
+         * mid-session. de1app drives its own screen saver, so keep the OS idle
+         * timer disabled. Re-asserted on every call (cheap, idempotent). */
+        onMain(^{ [UIApplication sharedApplication].idleTimerDisabled = YES; });
+        return TCL_OK;
+    }
+
     /* Android-only / not-applicable on iOS: accept and no-op (matches the macOS
      * borg's stubs) so the app keeps running. */
-    if (strcmp(sub, "screenorientation") == 0 || strcmp(sub, "systemui") == 0 ||
+    if (strcmp(sub, "screenorientation") == 0 ||
         strcmp(sub, "spinner") == 0 || strcmp(sub, "activity") == 0 ||
         strcmp(sub, "sensor") == 0 || strcmp(sub, "notification") == 0 ||
         strcmp(sub, "shortcut") == 0 || strcmp(sub, "bluetooth") == 0 ||
@@ -501,5 +531,10 @@ Borg_Init(Tcl_Interp *ip)
 {
     if (Tcl_InitStubs(ip, "8.6", 0) == NULL) { return TCL_ERROR; }
     Tcl_CreateObjCommand(ip, "borg", BorgCmd, NULL, NULL);
+    /* Keep the screen awake while the app is running. de1app calls `borg systemui`
+     * on Android but may be gated on iOS, so set the OS idle timer disabled once
+     * when borg loads. The SDL app delegate sets this even earlier; this is a
+     * redundant, cheap fallback for interpreters that load borg later. */
+    onMain(^{ [UIApplication sharedApplication].idleTimerDisabled = YES; });
     return Tcl_PkgProvide(ip, "borg", "1.0");
 }

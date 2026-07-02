@@ -113,6 +113,11 @@ cat > "$APP/Info.plist" <<PLIST
     <key>CFBundleURLSchemes</key><array><string>de1app</string></array>
   </dict></array>
   <key>UIStatusBarHidden</key><true/>
+  <!-- Let SDL's view controller govern the status bar (it returns
+       prefersStatusBarHidden=YES). The explicit setStatusBarHidden fallback in
+       SDL's app delegate + view controller handles iOS 9 where the plist key
+       alone is ignored. -->
+  <key>UIViewControllerBasedStatusBarAppearance</key><true/>
   <key>UIRequiresFullScreen</key><true/>
   <key>UISupportedInterfaceOrientations~ipad</key>
   <array>

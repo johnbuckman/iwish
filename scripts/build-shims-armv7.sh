@@ -12,12 +12,17 @@ A="-arch armv7 -isysroot $SDK -miphoneos-version-min=9.0 -fobjc-arc -fPIC -DUSE_
 echo ">>> borg-ios (armv7)"
 $CC -dynamiclib $A -o "$ROOT/borg-ios/libborg1.0.dylib" "$ROOT/borg-ios/tclBorgios.m" "$STUB" \
   -framework Foundation -framework UIKit -framework AudioToolbox -framework AVFoundation -framework CoreGraphics \
-  -install_name borg-ios/libborg1.0.dylib 2>&1 | grep -iE 'error:|Relocation|undefined|symbol.* not found' | grep -viE 'tbd|Simulator|ld_classic is dep' | head
+  -install_name @loader_path/libborg1.0.dylib 2>&1 | grep -iE 'error:|Relocation|undefined|symbol.* not found' | grep -viE 'tbd|Simulator|ld_classic is dep' | head
 file "$ROOT/borg-ios/libborg1.0.dylib" 2>&1 | grep -o arm_v7 && echo "borg armv7 OK" || echo "borg FAIL"
 
 echo ">>> ble-ios (armv7)"
-$CC -dynamiclib $A -o "$ROOT/ble-ios/libble1.0.dylib" "$ROOT/ble-ios/tclBLEios.m" "$STUB" \
+# tclble.m is the de1app-compatible in-process CoreBluetooth backend (the macOS
+# tcl-ble-osx native/tclble.m API, ported to armv7/iOS9 with a CBManagerState
+# compat shim + the central created on the calling thread so didDiscoverPeripheral
+# fires on iOS -- see IOS9-BLE.md). It supersedes the older tclBLEios.m (kept in
+# the tree for reference). UIKit is NOT needed by tclble.m.
+$CC -dynamiclib $A -o "$ROOT/ble-ios/libble1.0.dylib" "$ROOT/ble-ios/tclble.m" "$STUB" \
   -framework Foundation -framework CoreBluetooth \
-  -install_name ble-ios/libble1.0.dylib 2>&1 | grep -iE 'error:|Relocation|undefined|symbol.* not found' | grep -viE 'tbd|Simulator|ld_classic is dep' | head
+  -install_name @loader_path/libble1.0.dylib 2>&1 | grep -iE 'error:|Relocation|undefined|symbol.* not found' | grep -viE 'tbd|Simulator|ld_classic is dep' | head
 file "$ROOT/ble-ios/libble1.0.dylib" 2>&1 | grep -o arm_v7 && echo "ble armv7 OK" || echo "ble FAIL"
 echo "DONE_SHIMS_ARMV7"

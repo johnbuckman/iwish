@@ -138,6 +138,7 @@ cat > "$APP/Info.plist" <<PLIST
     <key>CFBundleURLSchemes</key><array><string>iwish</string></array>
   </dict></array>
   <key>UIStatusBarHidden</key><true/>
+  <key>UIViewControllerBasedStatusBarAppearance</key><true/>
   <key>UISupportedInterfaceOrientations~ipad</key>
   <array>
     <string>UIInterfaceOrientationLandscapeLeft</string>
