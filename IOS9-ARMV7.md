@@ -65,26 +65,43 @@ over SSH with the bundled `tclsh`; the Tk GUI must run under SpringBoard.
 
 Build extensions to loadable armv7 dylibs (NDK-compile + Apple/ld_classic link, theos SDK,
 TCL_UTF_MAX=6, 32-bit ABI cache, clang16+ -Wno-error downgrades):
-- `scripts/build-ext-armv7.sh <extdir> [cfg args]` — one TEA extension.
+- `scripts/build-ext-armv7.sh <extdir> [cfg args]` — one TEA extension. Passes
+  `make TCLSH_PROG=$HOSTTCLSH` (a **native** tclsh, default `/usr/local/bin/tclsh`) so any
+  build-time code generation runs on the host — the cross-target armv7 `tclsh` cannot execute on
+  the Mac (`Bad CPU type in executable`), which otherwise silently kills exts like tkhtml.
 - `scripts/build-allexts-armv7.sh` — batch of dep-free exts (sqlite3, tdom, thread, itcl,
   tksvg, tktable, tktreectrl, rl_json, nsf, vu, tkled, pikchr, lmdb, … — 25 build clean).
+- `scripts/build-extras-armv7.sh` — the rest (itk, tdbc, imgjp2, tkvnc, tkpath, tcl-stbimage,
+  tkhtml). **itk needs `--with-itcl=<…/tcl/pkgs/itcl4.2.0>`** (else configure can't find
+  `itclConfig.sh` and never writes a Makefile → no dylib).
 - `scripts/build-blt-armv7.sh` — BLT 2.4 (tkblt, de1app shot graph). CRITICAL armv7 ABI cache
   void_p=4; drop `-Dfinite=isfinite` (the 9.3 math.h declares `finite`); `make -C src build_shared`.
 - `scripts/build-shims-armv7.sh` — borg + ble ObjC shims (Apple clang armv7 directly).
 - `scripts/build-libressl-armv7.sh` + `build-tls-armv7.sh` — tls via static LibreSSL
   (`make -C include` FIRST to generate opensslconf.h; `endian_compat.c` provides be32toh etc.).
+- `scripts/build-curl-armv7.sh` + `build-tclcurl-armv7.sh` — libcurl (static, armv7) + TclCurl.
+  TLS is the armv7 LibreSSL (`--with-ssl=/tmp/ssl-armv7`), **not** Secure Transport: the sparse
+  theos 9.3 SDK is missing `CoreServices.framework`, which `--with-secure-transport` requires.
+  curl's cross-compile link-probes are pre-answered via its own `curl_cv_func_recv/send/select`
+  cache vars, and `endian_compat.c` is linked so LibreSSL's `be32toh`/etc. resolve.
 - tkimg (img::jpeg + 24 handler/codec dylibs): `build-ext-armv7.sh tkimg` with
   `EXTRA_CFLAGS=-DPNG_ARM_NEON_OPT=0` (bundled zlib/libpng/libtiff/libjpeg).
 - zint: `build-ext-armv7.sh zint/backend_tcl`.
 - sqlite3 needs `ac_cv_func_strchrnul=no` (iOS lacks strchrnul; use sqlite's built-in fallback).
-- `scripts/build-batteries-armv7.sh` — collect all dylibs + pkgIndex + companion .tcl into
-  `dist/iWish-batteries-armv7/lib/<pkg>/`.
+- `scripts/build-batteries-armv7.sh` — collect all dylibs + pkgIndex + companion scripts into
+  `dist/iWish-batteries-armv7/lib/<pkg>/`. Preserves `library/<subdir>/` layout (e.g. tclvfs's
+  `template/`), and stages `*.tcl`/`*.tm`/`*.itk`/`*.itcl`/`tclIndex` from `src`/`lib`/`library`/
+  `generic` so `tcl_findLibrary` packages (itk mega-widgets, TclCurl's `generic/tclcurl.tcl`) work.
+- `scripts/check-battery-pkgindex.tcl <libdir>` — static verifier: parses every staged
+  `pkgIndex.tcl`, resolves each `[file join $dir …]` source/load target, and reports any missing
+  file. Run it after `build-batteries-armv7.sh` (expected: `0 have missing source/load targets`).
 
-Verified on the iPad mini 1 (load-test under wish): **55 packages load**, including every de1app
-native dep — BLT, Img/img::jpeg (+all formats), sqlite3, tls, tdom, tksvg, Tktable, treectrl, vu,
-Itcl, zint, Borg, Ble, Thread. Remaining failures are non-de1app pure-Tcl companion-script
-placement (tclvfs::template/*, ral, tclcsv, trofs, topcua). Tk exts need `*_LIBRARY` env
-(ITCL_LIBRARY/ITK_LIBRARY/TREECTRL_LIBRARY/VU_LIBRARY) set to their package dir.
+**111 packages assembled; verifier reports 0 missing source/load targets.** Every de1app native
+dep loads on the iPad mini 1 under wish — BLT, Img/img::jpeg (+all formats), sqlite3, tls, tdom,
+tksvg, Tktable, treectrl, vu, Itcl, Itk, zint, Borg, Ble, Thread. Also builds: tkhtml, tkpath,
+tkvnc, imgjp2, tcl-stbimage, tdbc(+sqlite3), TclCurl, iwidgets (on itk). Tk/`tcl_findLibrary` exts
+need their `*_LIBRARY` env (ITCL_LIBRARY/ITK_LIBRARY/TREECTRL_LIBRARY/VU_LIBRARY) set to the
+package dir. `tdbc::sqlite3` is pure-Tcl (no dylib — don't treat "no arm_v7 dylib" as a failure).
 
 ## M2 — de1app running on the iPad mini 1
 

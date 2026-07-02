@@ -21,12 +21,23 @@ for dy in $(rtk proxy find "$JNI" -name '*.dylib'); do
   cp "$pk" "$dest/" 2>/dev/null
   # companion scripts. pkgIndex/Init reference them as [file join $dir X.tcl] (flat) or a
   # subdir (e.g. template/). Source scatters them in src/ lib/ library/ library/<sub>/.
-  # (1) flatten src/lib/library *.tcl to the package root (ral.tcl, csv.tcl, trofs.tcl, ...)
-  for sub in src lib library; do for t in "$d/$sub"/*.tcl; do [ -f "$t" ] && cp "$t" "$dest/" 2>/dev/null; done; done
-  # (2) mirror subdirs under library/ to the package root (tclvfs library/template -> dest/template)
-  if [ -d "$d/library" ]; then for sd in "$d/library"/*/; do [ -d "$sd" ] && cp -R "$sd" "$dest/" 2>/dev/null; done; fi
-  # (3) catch-all: preserve any other *.tcl structure
-  rsync -a --include='*/' --include='*.tcl' --exclude='*' "$d/" "$dest/" 2>/dev/null
+  # (1) flatten src/lib/library companion scripts to the package root (ral.tcl, csv.tcl, ...).
+  # Include .itk/.itcl + tclIndex too: [incr Tk]/Widgets load their mega-widget class files and
+  # auto-load index via tcl_findLibrary (ITK_LIBRARY), and those are NOT *.tcl (e.g. itk's
+  # Archetype.itk / Widget.itk / Toplevel.itk / tclIndex) — without them `package require itk`
+  # loads but itk::Widget is unusable (breaks iwidgets).
+  for sub in src lib library generic; do   # generic/: TclCurl ships tclcurl.tcl there
+    for t in "$d/$sub"/*.tcl "$d/$sub"/*.itk "$d/$sub"/*.itcl "$d/$sub"/tclIndex; do
+      [ -f "$t" ] && cp "$t" "$dest/" 2>/dev/null
+    done
+  done
+  # (2) mirror subdirs under library/ to the package root (tclvfs library/template -> dest/template).
+  # NOTE: strip the trailing slash — BSD `cp -R src/ dst/` copies src's *contents* into dst
+  # (flattening template/*.tcl to the package root, which breaks the pkgIndex's
+  # `[file join $dir template X.tcl]` lookups). `cp -R src dst/` creates dst/src as intended.
+  if [ -d "$d/library" ]; then for sd in "$d/library"/*/; do [ -d "$sd" ] && cp -R "${sd%/}" "$dest/" 2>/dev/null; done; fi
+  # (3) catch-all: preserve any other *.tcl / *.tm (Tcl module, e.g. tkhtml hv3-0.1.tm) structure
+  rsync -a --include='*/' --include='*.tcl' --include='*.tm' --exclude='*' "$d/" "$dest/" 2>/dev/null
   n=$((n+1))
 done
 # shims (borg/ble) + BLT: hand-place with a generated pkgIndex

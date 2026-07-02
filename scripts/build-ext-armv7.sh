@@ -18,6 +18,12 @@ LINKF="$ARCH -Wl,-undefined,dynamic_lookup -Wl,-ld_classic -lc++ -lc++abi"
 export ac_cv_sizeof_int=4 ac_cv_sizeof_long=4 ac_cv_sizeof_long_long=8 ac_cv_sizeof_void_p=4 ac_cv_sizeof_size_t=4
 
 TCLDIR=$ROOT/build/awtcl-armv7
+# The cross-target tclsh ($TCLDIR/tclsh) is an armv7 iOS binary and CANNOT run on the Mac.
+# Some TEA exts (e.g. tkhtml: src/cssprop.tcl, src/mkdefaultstyle.tcl) run $(TCLSH_PROG) at
+# BUILD time to generate arch-independent C source. Point that at a native host tclsh so
+# codegen works; the actual .o/.dylib still build with the armv7 CC. Harmless for exts that
+# don't codegen (TCLSH_PROG just goes unused). Override with HOSTTCLSH=... if 8.6.7 is elsewhere.
+HOSTTCLSH=${HOSTTCLSH:-/usr/local/bin/tclsh}
 TKDIR=$ROOT/src/androwish/jni/sdl2tk/sdl
 TKINC=$ROOT/src/androwish/jni/sdl2tk/generic
 TCLINC=$ROOT/src/androwish/jni/tcl/generic
@@ -44,7 +50,8 @@ perl -pi -e 's/-ltk8\.6/-lsdl2tkstub8.6/g; s@sdl2tk/unix@sdl2tk/sdl@g; s/-ltkstu
 # strip host x86 /usr/local SDL2 headers (their SDL_cpuinfo.h pulls x86 immintrin.h)
 perl -pi -e 's@-I/usr/local/include/SDL2@@g; s@-I/usr/local/include\b@@g' Makefile 2>/dev/null
 echo "=== make ==="
-make 2>&1 | grep -iE "error:|Relocation|\.dylib|undefined symbol|symbol.* not found" | grep -viE 'tbd file|Simulator|ld_classic is dep' | head -20
+# TCLSH_PROG -> native host tclsh so any build-time codegen (armv7 tclsh can't run here) works.
+make TCLSH_PROG="$HOSTTCLSH" 2>&1 | grep -iE "error:|Relocation|Bad CPU type|\bError [0-9]|\.dylib|undefined symbol|symbol.* not found" | grep -viE 'tbd file|Simulator|ld_classic is dep' | head -20
 echo "=== result dylib(s) ==="
 find . -maxdepth 2 -name "*.dylib" 2>/dev/null
 echo "DONE_EXT_ARMV7"

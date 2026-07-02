@@ -4,15 +4,18 @@ ROOT=/Users/john/iwish-ios9; JNI=$ROOT/src/androwish/jni
 LOG=/tmp/extras_armv7.log; : > "$LOG"; pass=0; fail=0; FAILED=""
 # "relpath|extra_cflags|extra configure args"
 EXTS=(
-  "itk||"
+  "itk||--with-itcl=/Users/john/iwish-ios9/src/androwish/jni/tcl/pkgs/itcl4.2.0"
   "tcl/pkgs/tdbc1.1.1||"
-  "tcl/pkgs/tdbcsqlite3-1.1.1||"
   "imgjp2||"
   "tkvnc||"
   "tkpath||"
   "tcl-stbimage|-DSTBIR_NO_SIMD -DSTBI_NO_SIMD|"
   "tkhtml||"
 )
+# NOTE: tdbcsqlite3-1.1.1 removed from this batch — it is PURE-TCL (empty PKG_LIB_FILE, no
+# dylib), so the "did an arm_v7 .dylib appear?" pass/fail check here always marks it FAIL.
+# It ships fine via the pure-Tcl staging in build-batteries-armv7.sh (needs tdbc + sqlite3,
+# both built). itk now needs --with-itcl (else configure can't find itclConfig.sh → no Makefile).
 for entry in "${EXTS[@]}"; do
   IFS='|' read -r rel xcf args <<< "$entry"
   d="$JNI/$rel"; name="${rel##*/}"
