@@ -26,6 +26,14 @@ builds the same stack as a native Apple-Silicon **macOS** binary; several of the
 non-UIKit fixes (the `size_t`/`pid_t` BLT bug, libpng NEON, TIFF codecs, the
 arm64 toolchain flags) are shared and documented there.
 
+A second sibling repo,
+[`androwish-ios9`](https://github.com/johnbuckman/androwish-ios9), is instead a
+**full-source, clone-and-build** snapshot for **32-bit armv7 / iOS 9** (old
+32-bit devices such as the jailbroken iPad mini 1, A5) — AndroWish's Tcl/Tk plus
+all its batteries in one checkout, with the armv7 build scripts, NDK+Apple
+toolchain wrappers, and a bundled iOS-9-patched SDL2 included. Use that if you
+want the whole source rather than patches to apply.
+
 ## What works
 
 - Tcl 8.6.10 + Tk 8.6 widgets on a real iOS device, the simulator, and Mac
