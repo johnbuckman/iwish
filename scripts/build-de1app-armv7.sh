@@ -33,6 +33,23 @@ cat > "$APP/lib-batteries/hardexit/pkgIndex.tcl" <<'PK'
 package ifneeded hardexit 1.0 [list load [file join $dir libhardexit.dylib] Hardexit]
 PK
 
+# BLE radio self-heal tool: the launcher runs it at startup to power-cycle Bluetooth
+# (BluetoothManager setPowered NO->YES) so BLE comes up on a fresh radio. See IOS9-BLE.md.
+if [ -f "$ROOT/ble-diag/bttoggle.m" ]; then
+  SDK="$HOME/theos/sdks/iPhoneOS9.3.sdk"
+  "$(xcrun --find clang)" -arch armv7 -isysroot "$SDK" -miphoneos-version-min=9.0 -fobjc-arc \
+    -Wl,-ld_classic -o "$APP/bttoggle" "$ROOT/ble-diag/bttoggle.m" -framework Foundation 2>&1 \
+    | grep -iE 'error:' || true
+  if [ -f "$ROOT/ble-diag/bt.entitlements" ]; then
+    ldid -S"$ROOT/ble-diag/bt.entitlements" "$APP/bttoggle" 2>/dev/null || true
+  else
+    ldid -S "$APP/bttoggle" 2>/dev/null || true
+  fi
+  file "$APP/bttoggle" | grep -q arm_v7 && echo "bttoggle bundled" || echo "WARN: bttoggle not built"
+else
+  echo "WARN: ble-diag/bttoggle.m not found; BLE radio self-heal will be skipped at launch"
+fi
+
 # icons (arch-independent) from the arm64 reference, if present
 for f in AppIcon60x60@2x.png AppIcon76x76@2x~ipad.png Assets.car; do
   [ -e "$REF/$f" ] && cp "$REF/$f" "$APP/" 2>/dev/null || true
@@ -55,6 +72,25 @@ L "IwishDE1 armv7 launcher: tcl=[info patchlevel]"
 set bundle [file dirname [info nameofexecutable]]
 set de1root "$DE1ROOT"
 L "bundle=\$bundle de1root=\$de1root"
+
+# --- BLE radio self-heal + armv7 ble shim preload ---
+# 1) Power-cycle Bluetooth so BLE starts on a fresh (un-wedged) radio: the aging A5
+#    combo-chip radio can stick in a "poweredOn but 0 adverts" state; a full chip
+#    power-cycle via the bundled bttoggle (BluetoothManager setPowered NO->YES) clears
+#    it. ~10s, negligible vs the multi-minute skin boot.
+set _btt [file join \$bundle bttoggle]
+if {[file executable \$_btt]} {
+    if {[catch {exec \$_btt 2>@1} _bto]} { L "bttoggle err: \$_bto" } else { L "bttoggle: BT power-cycled" }
+}
+# 2) Force the armv7 in-process ble shim BEFORE de1plus loads. de1plus/ble/ is the
+#    macOS (x86_64) tcl-ble-osx package whose pkgIndex provides `package require ble
+#    1.0` and would shadow the working armv7 shim on iOS -> de1app gets a dead `ble` /
+#    fake DE1. Load the armv7 shim now (it auto-provides ble 1.0) so the later
+#    `package require ble` is already satisfied and the macOS package is never sourced.
+set _blelib [file join \$bundle lib-batteries ble1.0 libble1.0.dylib]
+if {[file exists \$_blelib]} {
+    if {[catch {load \$_blelib Ble} _ble]} { L "ble shim load err: \$_ble" } else { L "ble armv7 shim loaded" }
+}
 
 if {![info exists ::tcl_library] || ![file isdirectory \$::tcl_library]} { set ::tcl_library [file join \$bundle lib tcl8.6] }
 if {![info exists ::tk_library]  || ![file isdirectory \$::tk_library]}  { set ::tk_library  [file join \$bundle lib tk8.6] }
