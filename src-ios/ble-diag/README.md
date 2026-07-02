@@ -18,6 +18,6 @@ Tools used to bring up and debug the in-process CoreBluetooth backend
 | `askpass.sh` | `SSH_ASKPASS` helper. |
 
 **Expected results:** a foreground scan (`ble_test_branch.tcl` via `uiopen iwish://run`,
-screen on) discovers the DE1 + scale + nearby devices. A headless scan (`devscan.tcl`)
+screen on) discovers nearby BLE devices (phones, wearables, beacons, ...). A headless scan (`devscan.tcl`)
 loads the shim and reaches `poweredOn` but discovers nothing — that is normal (iOS only
 delivers adverts to a foreground, screen-on app).
