@@ -1,5 +1,5 @@
 diff --git a/jni/sdl2tk/sdl/SdlTkX.c b/jni/sdl2tk/sdl/SdlTkX.c
-index abbb80fd..67020c05 100644
+index abbb80f..d180986 100644
 --- a/jni/sdl2tk/sdl/SdlTkX.c
 +++ b/jni/sdl2tk/sdl/SdlTkX.c
 @@ -4714,6 +4714,19 @@ HandleRootSize(struct RootSizeRequest *r)
@@ -174,7 +174,7 @@ index abbb80fd..67020c05 100644
      xdpi = SdlTkX.arg_xdpi;
      ydpi = SdlTkX.arg_ydpi;
      if (xdpi == 0) {
-@@ -6593,6 +6673,195 @@ ctxRetry:
+@@ -6593,6 +6673,242 @@ ctxRetry:
   *----------------------------------------------------------------------
   */
  
@@ -367,10 +367,57 @@ index abbb80fd..67020c05 100644
 +#endif /* TARGET_OS_MACCATALYST */
 +
 +
++/*
++ *----------------------------------------------------------------------
++ *
++ * SdlTkWaitEventBatched --
++ *
++ *	Drop-in replacement for SDL_WaitEvent() in the sdl2tk event thread.
++ *	SDL_WaitEvent() calls SDL_PumpEvents() on EVERY event it returns; on
++ *	iOS SDL_PumpEvents() runs the whole CFRunLoop, which is costly on the
++ *	weak armv7 A5 -- so a burst of already-queued events (periodic
++ *	TimerCallback userevents, BLE-driven X events, key auto-repeat, ...)
++ *	cost one full CFRunLoop pump EACH. This version serves anything already
++ *	in the SDL queue WITHOUT pumping, and only pumps the CFRunLoop when the
++ *	queue is empty -> one pump per drained burst instead of one per event.
++ *	Semantics match SDL_WaitEvent(): returns 1 with an event in *event, or
++ *	0 on shutdown / fatal queue error.
++ *
++ *----------------------------------------------------------------------
++ */
++#ifndef SDLTK_EVENT_POLL_MS
++#define SDLTK_EVENT_POLL_MS 30		/* CFRunLoop pump interval when idle */
++#endif
++
++static int
++SdlTkWaitEventBatched(SDL_Event *event)
++{
++    int n;
++
++    for (;;) {
++	/* Serve queued events without pumping the (expensive) CFRunLoop. */
++	n = SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT);
++	if (n != 0) {
++	    return (n > 0) ? 1 : 0;
++	}
++	/* Queue drained: pump once to admit new platform/timer events. */
++	SDL_PumpEvents();
++	n = SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT);
++	if (n != 0) {
++	    return (n > 0) ? 1 : 0;
++	}
++	if (SdlTkX.sdlscreen == NULL) {
++	    return 0;
++	}
++	SDL_Delay(SDLTK_EVENT_POLL_MS);
++    }
++}
++
++
  #ifdef __APPLE__
  void
  SdlTkEventThread(void)
-@@ -6675,6 +6944,18 @@ EventThread(ClientData clientData)
+@@ -6675,12 +6991,26 @@ EventThread(ClientData clientData)
       * Add all pending SDL events to the X event queues and
       * deal with screen refresh.
       */
@@ -389,3 +436,12 @@ index abbb80fd..67020c05 100644
      while (1) {
  	_XSQEvent *qevent;
  
+ 	/* Enable timer messages. */
+ 	SDL_AtomicSet(&timer_enabled, !SdlTkX.in_background);
+-	if (!SDL_WaitEvent(&sdl_event)) {
++	/* Batched wait: pump the CFRunLoop only when the SDL queue is empty,
++	 * not once per event (see SdlTkWaitEventBatched). */
++	if (!SdlTkWaitEventBatched(&sdl_event)) {
+ 	    break;
+ 	}
+ 	if ((sdl_event.type == SDL_USEREVENT) &&
