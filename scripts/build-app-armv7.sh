@@ -102,13 +102,108 @@ if {[file exists /tmp/iwish_runbat]} {
     exit 0
 }
 
-# default: a simple Tk demo proving rendering works
-wm title . "iWish armv7 / iOS9"
-label .l -text "iWish on iOS 9 (armv7)\nTcl/Tk [info patchlevel]" -font {Helvetica 28} -justify center
-pack .l -expand 1 -fill both -padx 20 -pady 20
-button .b -text "Tap me" -font {Helvetica 24} -command {.l configure -text "Tapped!\nTk works on iPad mini 1"}
-pack .b -pady 20
-catch {log "demo UI built"}
+# default: start up like desktop wish on macOS — an interactive Tk console plus an
+# empty main window. The console channels are already initialised (PLATFORM_SDL sets
+# docon=1 in tkMain.c) and Tk_CreateConsoleWindow ran in AppInit, but tkMain.c does
+# `console hide` whenever a startup script (this main.tcl) is present — so just re-show it.
+
+# --- unix-like convenience commands for the console -------------------------
+# The Tk console evaluates typed commands in THIS (main) interp. `ls`/`cat` etc.
+# aren't Tcl commands; the usual `unknown`->exec fallback is useless here (a
+# SpringBoard-launched app can't reliably fork/exec, and the device busybox lacks
+# head/tail/wc/tr anyway). Provide pure-Tcl equivalents (cd/pwd are built in).
+proc ls {args} {
+    set long 0; set dir [pwd]; set pats {}
+    foreach a $args {
+        if {$a in {-l -la -al -ll}} { set long 1 } elseif {[file isdirectory $a]} {
+            set dir $a
+        } else { lappend pats $a }
+    }
+    if {![llength $pats]} { set pats [list *] }
+    set files {}
+    foreach p $pats { lappend files {*}[glob -nocomplain -directory $dir $p] }
+    set out {}
+    foreach f [lsort -unique $files] {
+        set name [file tail $f]
+        if {[file isdirectory $f]} { append name / }
+        if {$long} {
+            set sz [expr {[file isdirectory $f] ? 0 : [file size $f]}]
+            lappend out [format "%10d  %s" $sz $name]
+        } else { lappend out $name }
+    }
+    return [join $out \n]
+}
+interp alias {} dir {} ls
+interp alias {} ll  {} ls -l
+proc cat {args} {
+    set out {}
+    foreach f $args { set fp [open $f r]; lappend out [read $fp]; close $fp }
+    return [join $out ""]
+}
+interp alias {} more {} cat
+interp alias {} less {} cat
+proc _slurp {f} { set fp [open $f r]; set d [read $fp]; close $fp; return $d }
+proc _headtail {which args} {
+    set n 10; set files {}
+    for {set i 0} {$i < [llength $args]} {incr i} {
+        set a [lindex $args $i]
+        if {$a eq "-n"} { set n [lindex $args [incr i]] } \
+        elseif {[regexp {^-([0-9]+)$} $a -> num]} { set n $num } \
+        else { lappend files $a }
+    }
+    set out {}
+    foreach f $files {
+        set lines [split [string trimright [_slurp $f] \n] \n]
+        if {$which eq "head"} { lappend out {*}[lrange $lines 0 [expr {$n-1}]] } \
+        else { lappend out {*}[lrange $lines end-[expr {$n-1}] end] }
+    }
+    return [join $out \n]
+}
+proc head {args} { _headtail head {*}$args }
+proc tail {args} { _headtail tail {*}$args }
+proc grep {pattern args} {
+    set out {}
+    foreach f $args {
+        set ln 0
+        foreach line [split [_slurp $f] \n] {
+            incr ln
+            if {[regexp -- $pattern $line]} { lappend out "$f:$ln:$line" }
+        }
+    }
+    return [join $out \n]
+}
+proc wc {args} {
+    set out {}
+    foreach f $args {
+        set d [_slurp $f]
+        lappend out [format "%7d %7d %7d  %s" \
+            [llength [split [string trimright $d \n] \n]] \
+            [llength [regexp -all -inline {\S+} $d]] [string length $d] $f]
+    }
+    return [join $out \n]
+}
+proc rm {args} {
+    set rec 0; set files {}
+    foreach a $args {
+        switch -- $a { -f {} -r - -rf - -fr {set rec 1} default {lappend files $a} }
+    }
+    foreach f $files { if {$rec} { file delete -force $f } else { file delete $f } }
+    return ""
+}
+proc cp {args} { set d [lindex $args end]; foreach s [lrange $args 0 end-1] { file copy -force $s $d }; return "" }
+proc mv {args} { set d [lindex $args end]; foreach s [lrange $args 0 end-1] { file rename -force $s $d }; return "" }
+proc mkdir {args} { foreach d $args { file mkdir $d }; return "" }
+proc touch {args} { foreach f $args { if {![file exists $f]} { close [open $f a] } }; return "" }
+proc echo {args} { return [join $args " "] }
+proc env {} { set o {}; foreach k [lsort [array names ::env]] { lappend o "$k=$::env($k)" }; return [join $o \n] }
+proc which {cmd} {
+    if {[llength [info commands $cmd]]} { return "$cmd: Tcl/console command" } \
+    else { return "$cmd: not found (external programs can't reliably run from the app)" }
+}
+
+wm title . "iWish"
+if {[catch {console show} err]} { catch {log "console show failed: $err"} }
+catch {log "console + empty window up (unix cmds: ls cat head tail grep wc rm cp mv mkdir touch which)"}
 TCL
 
 cat > "$APP/Info.plist" <<PLIST
