@@ -19,7 +19,7 @@ echo ">>> ble-ios (armv7)"
 # tclble.m is the de1app-compatible in-process CoreBluetooth backend (the macOS
 # tcl-ble-osx native/tclble.m API, ported to armv7/iOS9 with a CBManagerState
 # compat shim + the central created on the calling thread so didDiscoverPeripheral
-# fires on iOS -- see IOS9-BLE.md). It supersedes the older tclBLEios.m (kept in
+# fires on iOS -- see IOS9-BATTERIES.md). It supersedes the older tclBLEios.m (kept in
 # the tree for reference). UIKit is NOT needed by tclble.m.
 $CC -dynamiclib $A -o "$ROOT/ble-ios/libble1.0.dylib" "$ROOT/ble-ios/tclble.m" "$STUB" \
   -framework Foundation -framework CoreBluetooth \

@@ -2,7 +2,7 @@
 
 Tools used to bring up and debug the in-process CoreBluetooth backend
 (`../ble-ios/tclble.m`) on a jailbroken iPad mini 1. See
-[../../IOS9-BLE.md](../../IOS9-BLE.md) for the full story.
+[../../IOS9-BATTERIES.md](../../IOS9-BATTERIES.md) for the full story.
 
 | File | What it is |
 |---|---|
@@ -12,7 +12,7 @@ Tools used to bring up and debug the in-process CoreBluetooth backend
 | `ble_test_branch.tcl` | Prepend to `iWish.app/main.tcl`; gated by `/tmp/iwish_bletest`. Runs a **foreground** GUI scan under SpringBoard — the configuration that actually receives advertisements — and logs to `/var/mobile/Documents/ble_gui.log`. |
 | `ble_toggletest_branch.tcl` | Same, but `exec`s `bttoggle` first (power-cycle + scan). |
 | `blescan_branch.tcl` | Older foreground-scan branch (logs `appState` via the legacy `tclBLEios.m`). |
-| `devscan.tcl` | Headless scan harness (`tclsh devscan.tcl <dylib> ?secs? ?svcuuid...?`). Reaches `poweredOn` but shows **0 discoveries** — expected, because headless (see IOS9-BLE.md §5.1). |
+| `devscan.tcl` | Headless scan harness (`tclsh devscan.tcl <dylib> ?secs? ?svcuuid...?`). Reaches `poweredOn` but shows **0 discoveries** — expected, because headless (see IOS9-BATTERIES.md §5.1). |
 | `dssh.sh` / `dscp.sh` | Key-based SSH/SCP over `iproxy 2222` to `root@localhost`. |
 | `essh` | `expect` wrapper for the first password login (pw `alpine`); use it once to install your pubkey, then use `dssh.sh`. |
 | `askpass.sh` | `SSH_ASKPASS` helper. |

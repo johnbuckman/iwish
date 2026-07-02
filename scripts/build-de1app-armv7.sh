@@ -34,7 +34,7 @@ package ifneeded hardexit 1.0 [list load [file join $dir libhardexit.dylib] Hard
 PK
 
 # BLE radio self-heal tool: the launcher runs it at startup to power-cycle Bluetooth
-# (BluetoothManager setPowered NO->YES) so BLE comes up on a fresh radio. See IOS9-BLE.md.
+# (BluetoothManager setPowered NO->YES) so BLE comes up on a fresh radio. See IOS9-BATTERIES.md.
 if [ -f "$ROOT/ble-diag/bttoggle.m" ]; then
   SDK="$HOME/theos/sdks/iPhoneOS9.3.sdk"
   "$(xcrun --find clang)" -arch armv7 -isysroot "$SDK" -miphoneos-version-min=9.0 -fobjc-arc \
