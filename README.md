@@ -42,7 +42,8 @@ want the whole source rather than patches to apply.
 - Built `-DTCL_UTF_MAX=6` (UCS-4) so astral-plane characters and arrows render
   correctly (stock builds are UTF_MAX=3 and garble them).
 - A large bundled extension set built for `arm64-apple-ios`: tkimg (jpeg/png/
-  tiff), tls (LibreSSL), TclCurl, BLT 2.4, tksvg, sqlite3, itcl, thread, zint.
+  tiff), tls (LibreSSL), TclCurl, BLT 2.4, TkBLT (scientific plotting —
+  `blt::graph`/`barchart`/`vector`), tksvg, sqlite3, itcl, thread, zint.
 - iOS-native shims (under [`src-ios/`](src-ios)) that re-implement the AndroWish
   `borg` and `ble` commands on Apple frameworks:
   - **`borg`** → `UIScreen` brightness, `UIDevice`/`UIScreen` info, `UIApplication
@@ -67,6 +68,7 @@ scripts in [`scripts/`](scripts) drive it:
 | `build-device.sh`  | the foundation: FreeType, SDL2, AndroWish Tcl, sdl2tk + `sdl2wish` (all UTF6, `arm64-apple-ios`) |
 | `build-ext-dev.sh` | the loadable extension stack (tkimg, tls, TclCurl, tksvg, sqlite3, itcl, thread, zint) |
 | `build-blt-dev.sh` | BLT 2.4 (`libBLT24`) |
+| `build-tkblt-dev.sh` | TkBLT 3.2 — plotting widgets (`blt::graph`/`barchart`/`vector`); see [`demos/bltgraph.tcl`](demos/bltgraph.tcl) |
 | `build-utf6.sh`    | rebuilds Tcl/sdl2tk at `TCL_UTF_MAX=6` |
 
 The shims in `src-ios/` are compiled to `borg1.0`/`ble1.0`/`hardexit` loadable
