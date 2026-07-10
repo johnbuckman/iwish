@@ -26,7 +26,7 @@ SDL2/Tcl/Tk sources.
 | [`src-ios/`](src-ios) | iOS-native shims (`.m`): `borg-ios` (device bridge), `ble-ios` (CoreBluetooth), `hardexit` (clean `_exit`), `ble-diag` (BLE diagnostics). Each file's header has the exact `clang` line. |
 | [`patches/`](patches) | Patches against AndroWish's `jni/sdl2tk` and stock **SDL 2.30.11**. Applied via [`apply-patches.sh`](apply-patches.sh). Changes are also marked inline with `iwish:` comments. |
 | [`BUGS.md`](BUGS.md), [`TODO.md`](TODO.md) | Known issues and roadmap. |
-| `IOS9-*.md` | The **separate 32-bit armv7 / iOS 9** port (jailbroken A5/A6 devices, e.g. iPad mini 1). Different target — don't conflate with the arm64 build. Full-source sibling repo: [`androwish-ios9`](https://github.com/johnbuckman/androwish-ios9). |
+| `IOS9-*.md` | The **separate 32-bit armv7 / iOS 9** port (jailbroken A5/A6 devices, e.g. iPad mini 1). Different target — don't conflate with the arm64 build. Full-source sibling repo: [`iwish-ios9`](https://github.com/johnbuckman/iwish-ios9). |
 
 Sibling repo for the macOS Apple-Silicon build:
 [`undroidwish-arm64-batteries-included`](https://github.com/johnbuckman/undroidwish-arm64-batteries-included).
