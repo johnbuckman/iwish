@@ -1,28 +1,3 @@
-#!/bin/bash
-# Assemble + ldid-sign dist/iWish-armv7.app for the jailbroken iPad mini 1 (iOS 9.3.5).
-# Bundles: iWish(=sdl2wish), tclsh(armv7, for Tcl regression over SSH), lib/{tcl8.6,tk8.6},
-# the Tcl + Tk test suites, and a dispatcher main.tcl (demo, or runs a regression on a flag).
-set -euo pipefail
-ROOT=/Users/john/iwish-ios9
-AW=$ROOT/src/androwish/jni
-APP=$ROOT/dist/iWish-armv7.app
-WISH=$AW/sdl2tk/sdl/sdl2wish
-TCLSH=$ROOT/build/awtcl-armv7/tclsh
-BID=org.iwish.tk
-
-file "$WISH" | grep -q arm_v7 || { echo "ERROR: sdl2wish not armv7 (run build-device-armv7.sh)"; exit 1; }
-
-rm -rf "$APP"; mkdir -p "$APP/lib"
-cp "$WISH" "$APP/iWish"
-cp "$TCLSH" "$APP/tclsh"
-cp -R "$AW/tcl/library"        "$APP/lib/tcl8.6"
-cp -R "$AW/sdl2tk/library"     "$APP/lib/tk8.6"
-# test suites
-cp -R "$AW/tcl/tests"          "$APP/tests-tcl"
-cp -R "$AW/sdl2tk/tests"       "$APP/tests-tk"
-
-# dispatcher main.tcl (auto-run on SpringBoard launch via the tkAppInit no-arg block)
-cat > "$APP/main.tcl" <<'TCL'
 # iWish armv7 / iOS 9 launcher. Flag-driven so one bundle can demo OR run regressions.
 set base [file dirname [info nameofexecutable]]
 proc log {m} { set f [open "/tmp/iwish_run.log" a]; puts $f $m; close $f }
@@ -201,68 +176,123 @@ proc which {cmd} {
     else { return "$cmd: not found (external programs can't reliably run from the app)" }
 }
 
+# --- batteries on auto_path (so the demos' `package require`s resolve) --------
+set ::iwish_batteries [file join $base lib-batteries]
+if {[file isdirectory $::iwish_batteries]} {
+  proc _iwish_add_pkgdirs {root} {
+    if {[file exists [file join $root pkgIndex.tcl]] && ($root ni $::auto_path)} { lappend ::auto_path $root }
+    foreach d [glob -nocomplain -type d -directory $root *] { _iwish_add_pkgdirs $d }
+  }
+  if {$::iwish_batteries ni $::auto_path} { lappend ::auto_path $::iwish_batteries }
+  catch {_iwish_add_pkgdirs $::iwish_batteries}
+  foreach {_sub _envv} {itcl4.2.0 ITCL_LIBRARY tktreectrl TREECTRL_LIBRARY itk ITK_LIBRARY vu VU_LIBRARY trofs TROFS_LIBRARY} {
+    set _d [file join $::iwish_batteries $_sub]
+    if {[file isdirectory $_d]} { set ::env($_envv) $_d }
+  }
+  if {[file isdirectory [file join $::iwish_batteries tktreectrl]]} {
+    set ::treectrl_library [file join $::iwish_batteries tktreectrl]
+  }
+}
+# load the borg iOS bridge (used by the borg/ble demos)
+catch { package require borg }
+
 wm title . "iWish"
 if {[catch {console show} err]} { catch {log "console show failed: $err"} }
+catch {console eval {wm title . "iWish"}}
 catch {log "console + empty window up (unix cmds: ls cat head tail grep wc rm cp mv mkdir touch which)"}
-TCL
 
-# iWish 0.2: the heredoc above is the minimal fallback launcher. If the maintained
-# launcher (Tk console + File>Demos menu + on-launch window placement + borg load)
-# is present, use it instead — keeps the demos/menu across rebuilds. See
-# launcher/main-armv7.tcl in this repo (place it at $ROOT/main-armv7-launcher.tcl).
-[ -f "$ROOT/main-armv7-launcher.tcl" ] && cp "$ROOT/main-armv7-launcher.tcl" "$APP/main.tcl"
+# ===========================================================================
+# File > Demos submenu (above Exit) — same as the arm64 iWish. Each item sources
+# a bundled demo out of lib-batteries/. Missing demos grey out automatically.
+# ===========================================================================
+set ::iwish_builtin_apps {
+  paint       iwish-demos/paint.tcl
+  borgdemo    iwish-demos/borgdemo.tcl
+  bledemo     iwish-demos/bledemo.tcl
+  bltgraph    iwish-demos/bltgraph.tcl
+  widget      tkdemos/widget
+  tkcon       {tkcon2*/tkcon.tcl}
+  tkinspect   {tkinspect*/tkinspect.tcl}
+  calc        {calc*/calc.tcl}
+  tkmc        {TkMC*/tkmc.tcl}
+  bugz        tkbugz/tk_bugz.tcl
+  tksqlite    {tksqlite*/tksqlite.tcl}
+  tktable     {Tktable*/demos/spreadsheet.tcl}
+  treectrl    {treectrl*/demos/demo.tcl}
+  zint        {zint*/demo.tcl}
+  stardom     {stardom*/stardom.tcl}
+  imgdemo     {Img*/demo.tcl}
+  tkpdemo     {tkpath*/demos/all.tcl}
+  notebook    notebook2.2/notebook.tcl
+  vncviewer   {vnc*/vncviewer.tcl}
+  tkchat      {tkchat*/tkchat.tcl}
+  tixwidgets  {Tix*/demos/tixwidgets.tcl}
+  tixtour     {Tix*/demos/widget}
+}
+proc iwish_builtin_resolve {name} {
+  foreach {n pat} $::iwish_builtin_apps {
+    if {$n eq $name} {
+      set hits [glob -nocomplain [file join $::iwish_batteries $pat]]
+      return [expr {[llength $hits] ? [lindex $hits 0] : ""}]
+    }
+  }
+  return ""
+}
+proc iwish_builtin_menuspec {} {
+  set out {}
+  foreach {n pat} $::iwish_builtin_apps { lappend out $n [expr {[iwish_builtin_resolve $n] ne ""}] }
+  return $out
+}
+proc iwish_run_builtin {name} {
+  set path [iwish_builtin_resolve $name]
+  if {$path eq ""} { catch {tk_messageBox -icon info -title "Demos" -message "\"$name\" is not bundled."}; return }
+  set ::argv0 $path; set ::argv {}
+  if {[catch {uplevel #0 [list source $path]} err]} {
+    catch {tk_messageBox -icon error -title "Demos: $name" -message $err}
+  }
+}
+proc iwish_install_demos_menu {{tries 0}} {
+  if {[catch {console eval {winfo exists .menubar.file}} ok] || !$ok} {
+    if {$tries < 40} { after 150 [list iwish_install_demos_menu [expr {$tries+1}]] }
+    return
+  }
+  catch {console eval {
+    if {![winfo exists .menubar.file.demos]} {
+      menu .menubar.file.demos -tearoff 0
+      set idx -1
+      for {set i 0} {$i <= [.menubar.file index end]} {incr i} {
+        if {[catch {.menubar.file type $i} t] || $t ne "command"} continue
+        set l [.menubar.file entrycget $i -label]
+        if {[string match -nocase *xit* $l] || [string match -nocase *quit* $l]} { set idx $i; break }
+      }
+      if {$idx >= 0} { .menubar.file insert $idx cascade -label "Demos" -menu .menubar.file.demos } \
+      else { .menubar.file add cascade -label "Demos" -menu .menubar.file.demos }
+      foreach {nm avail} [consoleinterp eval iwish_builtin_menuspec] {
+        .menubar.file.demos add command -label $nm \
+          -state [expr {$avail ? "normal" : "disabled"}] \
+          -command [list consoleinterp eval [list iwish_run_builtin $nm]]
+      }
+    }
+  }}
+}
+after 300 iwish_install_demos_menu
 
-cat > "$APP/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>CFBundleDevelopmentRegion</key><string>en</string>
-  <key>CFBundleExecutable</key><string>iWish</string>
-  <key>CFBundleIdentifier</key><string>${BID}</string>
-  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>iWish</string>
-  <key>CFBundleDisplayName</key><string>iWish</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1</string>
-  <key>CFBundleVersion</key><string>1</string>
-  <key>LSRequiresIPhoneOS</key><true/>
-  <key>MinimumOSVersion</key><string>9.0</string>
-  <key>CFBundleSupportedPlatforms</key><array><string>iPhoneOS</string></array>
-  <key>DTPlatformName</key><string>iphoneos</string>
-  <key>DTPlatformVersion</key><string>9.3</string>
-  <key>DTSDKName</key><string>iphoneos9.3</string>
-  <key>UIDeviceFamily</key><array><integer>2</integer></array>
-  <key>UIRequiredDeviceCapabilities</key><array><string>armv7</string></array>
-  <key>CFBundleURLTypes</key>
-  <array><dict>
-    <key>CFBundleURLName</key><string>org.iwish.tk</string>
-    <key>CFBundleURLSchemes</key><array><string>iwish</string></array>
-  </dict></array>
-  <key>UIStatusBarHidden</key><true/>
-  <key>UIViewControllerBasedStatusBarAppearance</key><true/>
-  <key>UISupportedInterfaceOrientations~ipad</key>
-  <array>
-    <string>UIInterfaceOrientationLandscapeLeft</string>
-    <string>UIInterfaceOrientationLandscapeRight</string>
-    <string>UIInterfaceOrientationPortrait</string>
-    <string>UIInterfaceOrientationPortraitUpsideDown</string>
-  </array>
-</dict></plist>
-PLIST
-
-cat > "$ROOT/iWish.entitlements" <<'ENT'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>platform-application</key><true/>
-  <key>com.apple.private.security.no-container</key><true/>
-  <key>get-task-allow</key><true/>
-  <key>dynamic-codesigning</key><true/>
-</dict></plist>
-ENT
-
-xattr -cr "$APP" 2>/dev/null || true
-ldid -S"$ROOT/iWish.entitlements" "$APP/iWish"
-ldid -S"$ROOT/iWish.entitlements" "$APP/tclsh"
-echo "BUILT: $APP"
-du -sh "$APP"; file "$APP/iWish" "$APP/tclsh"
+# --- window placement: main wish window +20+20, console centered --------------
+proc iwish_center_console {{tries 0}} {
+  if {[catch {console eval {winfo exists .}} ok] || !$ok} {
+    if {$tries < 40} { after 150 [list iwish_center_console [expr {$tries+1}]] }
+    return
+  }
+  catch {console eval {
+    update idletasks
+    set w [winfo width .];  if {$w <= 1} { set w [winfo reqwidth .] }
+    set h [winfo height .]; if {$h <= 1} { set h [winfo reqheight .] }
+    set x [expr {([winfo screenwidth .]  - $w) / 2}]
+    set y [expr {([winfo screenheight .] - $h) / 2}]
+    if {$x < 0} { set x 0 }
+    if {$y < 0} { set y 0 }
+    wm geometry . +$x+$y
+  }}
+}
+after 300 {catch {wm geometry . +20+20}}
+after 300 iwish_center_console

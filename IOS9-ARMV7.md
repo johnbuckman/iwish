@@ -11,6 +11,30 @@ Status: the full stack (FreeType, SDL2, AndroWish Tcl 8.6.10, sdl2tk+AGG, `sdl2w
 `long double` == `double`). Tk (sdl2tk) suite: 7930 tests, 6717 passed, 83 failed (all in
 sdl2tk's reduced-X11 backend: fonts/events/WM — not armv7 bugs).
 
+## 0.2 additions (parity with the arm64 build)
+
+The 0.2 work from the arm64 iWish was ported to armv7 and **verified on the iPad mini 1**:
+
+- **TkBLT** (`blt::graph`/`barchart`/`vector` plotting) — `scripts/build-tkblt-armv7.sh`. C++;
+  built with Apple clang++ (doesn't hit the assembler bug), `-DPLATFORM_SDL -I sdl2tk/sdl`,
+  stray `-lX11` stripped, relinked with `dynamic_lookup`.
+- **Tix** (tixwidgets/tixtour) — `scripts/build-tix-armv7.sh` (same deep-ext flags; drop the
+  macOS-XQuartz X11 the TEA Makefile adds).
+- **vectcl** (numeric library) — `scripts/build-vectcl-armv7.sh`. Two iOS source fixes in the
+  bundled f2c math lib: `system()` stubbed (no fork/exec) and `drem()` → `remainder()` (drem
+  was removed from the iOS libm). The `vectclab` demo stays greyed (needs a Tk-enabled slave
+  interp, incompatible with static sdl2tk) — same as arm64.
+- **File ▸ Demos menu** + the four custom demos (`bltgraph`, `bledemo`, `borgdemo`, `paint`)
+  and on-launch window placement (main window +20+20, console centered) — in the maintained
+  launcher `launcher/main-armv7.tcl` (place at `$ROOT/main-armv7-launcher.tcl`;
+  `build-app-armv7.sh` prefers it over the built-in fallback).
+- **borg** gained the optional `borg beep ?soundid?` (default 1057), matching arm64.
+
+On-device check (all load): `borg`, `ble`, `Tkblt`, `Tix`, `vectcl` all `package require` OK and
+TkBLT's graph/barchart widgets build. Stock demos that need per-demo `.tcl` scripts not in the
+armv7 battery set (tktable/zint/imgdemo/…) grey out — their dylibs are present, only the demo
+scripts are missing.
+
 ## The toolchain problem (and the fix)
 
 Apple clang 21 (Xcode 26) has a **broken armv7 integrated assembler** — it cannot assemble
