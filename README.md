@@ -44,6 +44,13 @@ all its batteries in one checkout, with the armv7 build scripts, NDK+Apple
 toolchain wrappers, and a bundled iOS-9-patched SDL2 included. Use that if you
 want the whole source rather than patches to apply.
 
+<p align="center">
+  <img src="assets/iwish_demo1.png" width="900"
+       alt="iWish running on an iPad — the borg iOS device bridge, a Bluetooth LE debugger connected to a Decent scale and a DE1, and an interactive wish console">
+</p>
+
+<p align="center"><em>iWish on an iPad: the <code>borg</code> device bridge, a live BLE debugger, and a real <code>wish</code> console.</em></p>
+
 ## What works
 
 - Tcl 8.6.10 + Tk 8.6 widgets on a real iOS device, the simulator, and Mac
