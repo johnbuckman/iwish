@@ -1,8 +1,32 @@
 diff --git a/jni/sdl2tk/sdl/SdlTkInt.h b/jni/sdl2tk/sdl/SdlTkInt.h
-index 9156a698..1262733a 100644
+index 9156a69..1e42448 100644
 --- a/jni/sdl2tk/sdl/SdlTkInt.h
 +++ b/jni/sdl2tk/sdl/SdlTkInt.h
-@@ -164,6 +164,7 @@ struct _XSQEvent {
+@@ -130,8 +130,23 @@ struct _Window {
+  * Frame rate (and timer) for periodic timer events.
+  * Used for screen updates and in time stamps in X events.
+  */
++#if defined(__APPLE__)
++#include <TargetConditionals.h>
++#endif
+ #ifdef ANDROID
+ #define SDLTK_FRAMERATE 50
++#elif defined(__APPLE__) && defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
++/*
++ * iOS device build (armv7 iPad mini 1 etc.): the periodic TimerCallback is a
++ * fixed heartbeat that, every tick, both Tcl_ConditionNotify()s the Tcl event
++ * loop AND posts a userevent to wake the SDL event pump (-> SdlTkScreenRefresh).
++ * At 100 Hz this burns ~0.8 of one CPU core at foreground idle on the weak A5
++ * (no GPU 2D path), even when nothing is drawn -- measured 2026-07-02. With the
++ * batched CFRunLoop pump (SdlTkWaitEventBatched in SdlTkX.c) the heartbeat is
++ * cheap at any rate, so this mainly sets the screen-refresh cadence: 30 Hz is a
++ * smooth UI while idle stays ~0.3 core. Input events wake the pump immediately.
++ */
++#define SDLTK_FRAMERATE 30
+ #else
+ #define SDLTK_FRAMERATE 100
+ #endif
+@@ -164,6 +179,7 @@ struct _XSQEvent {
  #define SDLTKX_PRESENT  0x04    /* SDL_RenderPresent() required. */
  #define SDLTKX_RENDCLR  0x08    /* SDL_RenderClear() on front buffer. */
  #define SDLTKX_SCALED   0x10    /* Viewport is scaled. */
@@ -10,7 +34,7 @@ index 9156a698..1262733a 100644
  #define SDLTKX_RENDCLR2 0x80    /* SDL_RenderClear() on back buffer. */
  
  typedef struct SdlTkXInfo {
-@@ -389,6 +390,8 @@ extern int SdlTkGfxTextWidth(Font f, const char *string, int length, int *maxw);
+@@ -389,6 +405,8 @@ extern int SdlTkGfxTextWidth(Font f, const char *string, int length, int *maxw);
  
  /* SdlTkGfx.c */
  extern void SdlTkSetSWCursor(const unsigned char *data);

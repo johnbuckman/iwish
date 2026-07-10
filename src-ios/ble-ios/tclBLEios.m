@@ -33,6 +33,16 @@
 #include <tcl.h>
 #import <Foundation/Foundation.h>
 #import <CoreBluetooth/CoreBluetooth.h>
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>   /* applicationState diagnostics (iOS / Catalyst only) */
+#define BLE_LOG_PATH "/var/mobile/Documents/de1_ble.log"
+#else
+#define BLE_LOG_PATH "/tmp/de1_ble_mac.log"   /* macOS reference-test build */
+#endif
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 100000  /* iOS 9 SDK: CBManagerState* was CBCentralManagerState* */
+#define CBManagerStatePoweredOn CBCentralManagerStatePoweredOn
+#endif
 
 /* ---- cross-thread event marshalling ------------------------------------ */
 
@@ -43,6 +53,18 @@ typedef struct EvalEvent {
     Tcl_Event header;
     char     *script;     /* malloc'd, freed after eval */
 } EvalEvent;
+
+/* Unbuffered on-device BLE diagnostics: idevicesyslog can't attach to this
+ * jailbroken iOS 9 device, so append-and-close each line to a file we can pull
+ * over SSH. Cheap, low-volume (state changes + discovered devices). */
+static void
+BLELog(NSString *msg)
+{
+    @autoreleasepool {
+        FILE *f = fopen(BLE_LOG_PATH, "a");
+        if (f) { fputs([[msg stringByAppendingString:@"\n"] UTF8String], f); fclose(f); }
+    }
+}
 
 static int
 EvalEventProc(Tcl_Event *evPtr, int flags)
@@ -120,8 +142,10 @@ bytesToTcl(NSData *d)
 @property (strong) NSMutableDictionary<NSString*,BLEConn*> *conns;     /* handle -> conn */
 @property (strong) NSMutableDictionary<NSString*,CBPeripheral*> *byUUID;
 @property (copy)   NSString *scanCallback;
+@property (strong) NSArray  *scanServices;  /* CBUUID* list to filter the scan, or nil = all */
 @property (assign) int nextHandle;
 @property (assign) BOOL pendingScan;       /* scan requested before poweredOn */
+- (void)beginScan;
 @end
 
 static BLEManager *gMgr = nil;
@@ -146,11 +170,41 @@ static BLEManager *gMgr = nil;
         dispatch_once(&bleQueueOnce, ^{
             bleQueue = dispatch_queue_create("org.iwish.ble", DISPATCH_QUEUE_SERIAL);
         });
-        dispatch_async(bleQueue, ^{
-            self->_central = [[CBCentralManager alloc] initWithDelegate:self queue:bleQueue];
-        });
+        /* Create the manager on the CURRENT (Tcl) thread, with bleQueue used ONLY
+         * as the delegate queue.  Do NOT create it from inside a block already
+         * running on bleQueue: creating a CBCentralManager while executing on its
+         * own delegate queue leaves its XPC event source half-wired -- the initial
+         * centralManagerDidUpdateState is delivered, but didDiscoverPeripheral never
+         * fires (scan reports isScanning=YES yet returns no peripherals).  Creating
+         * it off the delegate queue (here, synchronously) wires the source correctly;
+         * callbacks still arrive on bleQueue, which GCD services with or without a
+         * CFRunLoop (so this works both under SpringBoard and in a headless tclsh). */
+        _central = [[CBCentralManager alloc] initWithDelegate:self queue:bleQueue];
     }
     return self;
+}
+
+/* Start (or restart) scanning. iOS suppresses an all-peripherals scan
+ * (services == nil) when the process is NOT foreground; a scan filtered by
+ * explicit service UUIDs is still honoured in the background, so passing
+ * self.scanServices both narrows the scan and makes it work headless. */
+- (void)beginScan {
+    NSArray *svcs = self.scanServices;
+    [self.central scanForPeripheralsWithServices:svcs options:@{ CBCentralManagerScanOptionAllowDuplicatesKey: @YES }];
+    BLELog([NSString stringWithFormat:@"beginScan: nservices=%lu isScanning=%d",
+            (unsigned long)svcs.count, (int)self.central.isScanning]);
+    /* iOS suppresses an all-peripherals scan unless the app is the ACTIVE
+     * foreground app. Log applicationState so we can tell "no devices in range"
+     * apart from "app not actually foreground". (Must read it on the main thread.) */
+#if TARGET_OS_IPHONE
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            UIApplication *app = [UIApplication sharedApplication];
+            BLELog([NSString stringWithFormat:@"  appState=%ld (0=active 1=inactive 2=background)",
+                    (long)app.applicationState]);
+        } @catch (__unused id e) { BLELog(@"  appState=<no UIApplication>"); }
+    });
+#endif
 }
 
 - (BLEConn *)connForPeripheral:(CBPeripheral *)p {
@@ -164,14 +218,21 @@ static BLEManager *gMgr = nil;
 
 - (void)centralManagerDidUpdateState:(CBCentralManager *)central {
     /* states: 0 unknown,1 resetting,2 unsupported,3 unauthorized,4 off,5 on */
+    const char *names[] = {"unknown","resetting","unsupported","unauthorized","poweredOff","poweredOn"};
+    int st = (int)central.state; if (st < 0 || st > 5) st = 0;
+    BLELog([NSString stringWithFormat:@"didUpdateState state=%s pendingScan=%d cb=%@",
+            names[st], (int)self.pendingScan, self.scanCallback ?: @"(nil)"]);
     if (self.scanCallback) {
-        const char *names[] = {"unknown","resetting","unsupported","unauthorized","poweredOff","poweredOn"};
-        int st = (int)central.state; if (st < 0 || st > 5) st = 0;
         BLEQueueScript([NSString stringWithFormat:@"%@ state [dict create state %s]", self.scanCallback, names[st]]);
     }
-    if (central.state == CBManagerStatePoweredOn && self.pendingScan) {
+    /* Start scanning on poweredOn if a scan is wanted. Accept either an explicit
+     * pendingScan OR a scanCallback already set: `ble scanner` may have run while
+     * the adapter was still powering up (its cross-thread state read returning
+     * not-poweredOn), in which case this is the only place the scan can begin. */
+    if (central.state == CBManagerStatePoweredOn && (self.pendingScan || self.scanCallback)) {
         self.pendingScan = NO;
-        [self.central scanForPeripheralsWithServices:nil options:nil];
+        BLELog(@"didUpdateState -> beginScan (poweredOn)");
+        [self beginScan];
     }
 }
 
@@ -181,6 +242,9 @@ static BLEManager *gMgr = nil;
                   RSSI:(NSNumber *)rssi {
     NSString *uuid = peripheral.identifier.UUIDString;
     self.byUUID[uuid] = peripheral;
+    BLELog([NSString stringWithFormat:@"discover uuid=%@ advname=%@ pname=%@ rssi=%@ advkeys=%@",
+            uuid, adv[CBAdvertisementDataLocalNameKey] ?: @"(nil)", peripheral.name ?: @"(nil)",
+            rssi, [adv.allKeys componentsJoinedByString:@","]]);
     if (self.scanCallback) {
         NSString *name = adv[CBAdvertisementDataLocalNameKey];
         if (!name) name = peripheral.name ? peripheral.name : @"";
@@ -303,10 +367,21 @@ BleCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
 
     @autoreleasepool {
     if (strcmp(sub, "scanner") == 0) {
-        /* ble scanner <callback> ?uuids? -- defers until Bluetooth is poweredOn */
+        /* ble scanner <callback> ?uuid ...? -- defers until Bluetooth is poweredOn.
+           Optional service UUIDs filter the scan (and make it work when the process
+           is not foreground -- iOS suppresses an all-peripherals scan in background). */
         gMgr.scanCallback = (objc >= 3) ? [NSString stringWithUTF8String:Tcl_GetString(objv[2])] : nil;
+        NSMutableArray *svcs = [NSMutableArray array];
+        for (int i = 3; i < objc; i++) {
+            CBUUID *cu = [CBUUID UUIDWithString:[NSString stringWithUTF8String:Tcl_GetString(objv[i])]];
+            if (cu) { [svcs addObject:cu]; }
+        }
+        gMgr.scanServices = svcs.count ? svcs : nil;
+        BLELog([NSString stringWithFormat:@"ble scanner: central=%@ state=%d cb=%@ nservices=%lu",
+                gMgr.central ? @"yes" : @"NIL", (int)gMgr.central.state,
+                gMgr.scanCallback ?: @"(nil)", (unsigned long)svcs.count]);
         if (gMgr.central.state == CBManagerStatePoweredOn) {
-            [gMgr.central scanForPeripheralsWithServices:nil options:nil];
+            [gMgr beginScan];
         } else {
             gMgr.pendingScan = YES;   /* started from centralManagerDidUpdateState */
         }
@@ -318,12 +393,20 @@ BleCmd(ClientData cd, Tcl_Interp *ip, int objc, Tcl_Obj *const objv[])
            after `ble scanner` (bluetooth.tcl:3110).  Our scanner already begins
            on creation; (re)start scanning so this is idempotent rather than an
            "unknown subcommand" error (matches the macOS ble package fix). */
+        BLELog([NSString stringWithFormat:@"ble start: central=%@ state=%d",
+                gMgr.central ? @"yes" : @"NIL", (int)gMgr.central.state]);
         if (gMgr.central.state == CBManagerStatePoweredOn) {
-            [gMgr.central scanForPeripheralsWithServices:nil options:nil];
+            [gMgr beginScan];
         } else {
             gMgr.pendingScan = YES;
         }
         Tcl_SetObjResult(ip, Tcl_NewStringObj("scanner0", -1));
+        return TCL_OK;
+    }
+    if (strcmp(sub, "state") == 0) {
+        const char *names[] = {"unknown","resetting","unsupported","unauthorized","poweredOff","poweredOn"};
+        int st = (int)gMgr.central.state; if (st < 0 || st > 5) st = 0;
+        Tcl_SetObjResult(ip, Tcl_NewStringObj(names[st], -1));
         return TCL_OK;
     }
     if (strcmp(sub, "powerstate") == 0) {

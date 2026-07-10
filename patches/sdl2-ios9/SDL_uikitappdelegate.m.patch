@@ -1,0 +1,28 @@
+--- a/src/video/uikit/SDL_uikitappdelegate.m
++++ b/src/video/uikit/SDL_uikitappdelegate.m
+@@ -460,6 +460,16 @@
+
+         launchWindow.rootViewController = vc;
+     }
++#endif
++
++#if !TARGET_OS_TV && !TARGET_OS_MACCATALYST
++    /* iWish: keep the screen awake and force the status bar hidden immediately
++     * at app launch. The Info.plist keys are not always honoured on iOS 9 /
++     * SDL's UIKit backend (especially when no launch storyboard is present), so
++     * set them explicitly here. SDL's view controller also returns
++     * prefersStatusBarHidden=YES as a fallback. */
++    application.idleTimerDisabled = YES;
++    [application setStatusBarHidden:YES animated:NO];
+ #endif
+
+     /* Set working directory to resource path */
+@@ -506,7 +516,7 @@
+     SDL_SendDropComplete(NULL);
+ }
+
+-#if TARGET_OS_TV || (defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0)
++#if TARGET_OS_TV || (defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0 && __IPHONE_OS_VERSION_MAX_ALLOWED >= 100000)
+
+ - (BOOL)application:(UIApplication *)app openURL:(NSURL *)url options:(NSDictionary<UIApplicationOpenURLOptionsKey,id> *)options
+ {

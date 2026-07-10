@@ -1,0 +1,5 @@
+#!/bin/bash
+# armv7/iOS9 C++ wrapper: Apple clang++ (finds the copied libc++ v1 headers; AGG's
+# C++ functions aren't huge so the armv7 relocation bug doesn't hit). -stdlib=libc++.
+APPLECXX="$(xcrun --find clang++)"
+exec "$APPLECXX" -stdlib=libc++ "$@"

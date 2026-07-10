@@ -3,10 +3,14 @@
 Alpha. Known rough edges:
 
 ## Packaging / distribution
-- The released `iWish.app` is **unsigned**. iOS will not launch it until you
-  re-sign it with your own Apple Development certificate and a provisioning
-  profile that lists your device's UDID, and enable Developer Mode on the device.
-- No App Store / TestFlight build yet; install is via `devicectl` (or Xcode) only.
+- The `0.2-alpha` release ships a prebuilt **`iWish.ipa`** (a development build).
+  iOS will not launch it until it is **re-signed** with your own Apple ID —
+  Sideloadly/AltStore do this automatically; from source you use
+  `sign-and-install-device.sh`. Enable Developer Mode on the device first. See
+  [`INSTALL.md`](INSTALL.md) for every path.
+- **Cannot** ship on the App Store (it's an interpreter that `dlopen`s C
+  extensions — guideline 2.5.2). Distribution is sideloading, or, in the EU, a
+  notarized web/marketplace install (no expiry). No TestFlight.
 - The build scripts have absolute paths and assumptions baked in (developed on
   one machine); they are a recipe to adapt, not a turnkey `make`.
 

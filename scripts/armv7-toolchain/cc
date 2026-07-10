@@ -1,0 +1,8 @@
+#!/bin/bash
+# armv7/iOS9 C compiler wrapper: NDK clang-18 for COMPILE (Apple clang-21 armv7
+# backend can't assemble Tcl's huge functions), Apple clang for LINK (+ld_classic,
+# the proven loadable-jailbreak-binary path). Detected by presence of -c.
+NDKCC="/Users/john/Library/Android/sdk/ndk/27.3.13750724/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang"
+APPLECC="$(xcrun --find clang)"
+for a in "$@"; do if [ "$a" = "-c" ]; then exec "$NDKCC" --target=armv7-apple-ios9.0 "$@"; fi; done
+exec "$APPLECC" "$@"

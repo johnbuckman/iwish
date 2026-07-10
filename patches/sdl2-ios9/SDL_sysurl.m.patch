@@ -1,0 +1,14 @@
+--- /tmp/pristine-sdl/SDL2-2.30.11/src/misc/ios/SDL_sysurl.m	2025-01-01 16:48:45
++++ src/SDL2-2.30.11/src/misc/ios/SDL_sysurl.m	2026-06-30 09:11:58
+@@ -32,7 +32,11 @@
+             return SDL_SetError("No handler registered for this type of URL");
+         }
+         if (@available(iOS 10.0, tvOS 10.0, *)) {
++            #if __IPHONE_OS_VERSION_MAX_ALLOWED >= 100000
+             [[UIApplication sharedApplication] openURL:nsurl options:@{} completionHandler:^(BOOL success) {}];
++            #else  /* iOS 9.3 SDK: the iOS-10 selector isn't declared; use the 9.x API */
++            [[UIApplication sharedApplication] openURL:nsurl];
++            #endif
+         } else {
+             #ifndef SDL_PLATFORM_VISIONOS   /* Fallback is never available in any version of VisionOS (but correct API always is). */
+             [[UIApplication sharedApplication] openURL:nsurl];
