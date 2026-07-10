@@ -26,6 +26,12 @@ set ::bd(conn)    ""      ;# connection handle
 set ::bd(devs)    [dict create]
 set ::bd(order)   {}
 set ::bd(cur)     ""      ;# selected char node id
+set ::bd(autoname) 1      ;# background auto-name sweep enabled
+set ::bd(an_tried) [dict create]  ;# addr -> 1 (already attempted this scan)
+set ::bd(resolved) [dict create]  ;# addr -> name resolved via GATT 0x2A00
+set ::bd(an_conn)  ""     ;# sweep's in-flight connection handle
+set ::bd(an_addr)  ""     ;# addr the sweep is currently resolving
+set ::bd(an_after) ""     ;# sweep per-device timeout id
 array unset ::bdchar      ;# node-id -> {suuid sinstance cuuid cinstance}
 array unset ::bdsub       ;# node-id -> 1 if subscribed
 
@@ -65,8 +71,9 @@ proc bd_log {m} {
 frame .bledbg.top
 button .bledbg.top.scan -text "Start scan" -width 11 -command bd_toggle_scan
 button .bledbg.top.disc -text "Disconnect" -width 11 -command bd_disconnect -state disabled
+checkbutton .bledbg.top.auto -text "Auto-name" -variable ::bd(autoname)
 label  .bledbg.top.status -text "idle" -fg gray30
-pack .bledbg.top.scan .bledbg.top.disc -side left -padx 4 -pady 4
+pack .bledbg.top.scan .bledbg.top.disc .bledbg.top.auto -side left -padx 4 -pady 4
 pack .bledbg.top.status -side left -padx 10
 pack .bledbg.top -side top -fill x
 
@@ -148,15 +155,97 @@ proc bd_scan_cb {event data} {
     if {$event eq "state"} { catch {.bledbg.top.status configure -text "Bluetooth: [dict get $data state]"}; return }
     if {$event ne "scan"} return
     set addr [dict get $data address]; set name [dict get $data name]; set rssi [dict get $data rssi]
-    if {$name eq ""} {
+    if {[dict exists $::bd(resolved) $addr]} {
+        set name [dict get $::bd(resolved) $addr]   ;# GATT-resolved name wins over a blank ad
+    } elseif {$name eq ""} {
         set lbl [bd_adv_label $data]
         set name [expr {$lbl ne "" ? "‹$lbl›" : "(unnamed)"}]  ;# ‹inferred›
     }
     dict set ::bd(devs) $addr [list $name $rssi]; catch {bd_render_devs}
 }
+# ---- background auto-name sweep ------------------------------------------
+# For devices that advertise no usable name, briefly connect, read the GATT
+# Device Name (0x2A00), then disconnect — ONE at a time — to fill in the list.
+# Each device is tried once per scan; pauses while the user has their own
+# connection open; resolved names are cached so continued scanning won't blank them.
+proc bd_needs_name {name} { expr {$name eq "(unnamed)" || [string index $name 0] eq "‹"} }
+proc bd_autoname_tick {} {
+    after 1200 bd_autoname_tick
+    if {![winfo exists .bledbg]} return
+    if {!$::bd(autoname) || $::bd(conn) ne "" || $::bd(an_conn) ne "" || $::bd(scanner) eq ""} return
+    # try the STRONGEST-signal untried unnamed device first — a close device is
+    # more likely yours and more likely to accept a connection (distant anonymous
+    # beacons mostly refuse and just waste the per-device timeout).
+    set best ""; set bestr -999
+    dict for {addr info} $::bd(devs) {
+        lassign $info name rssi
+        if {[dict exists $::bd(an_tried) $addr] || ![bd_needs_name $name]} continue
+        if {$rssi ne "" && $rssi != 127 && $rssi > $bestr} { set bestr $rssi; set best $addr }
+    }
+    if {$best ne ""} { bd_autoname_start $best }
+}
+proc bd_autoname_start {addr} {
+    dict set ::bd(an_tried) $addr 1
+    set ::bd(an_addr) $addr; set ::bd(an_vals) [dict create]
+    # pause scanning first: the A5 radio can't reliably connect while a scan runs.
+    catch {ble stop $::bd(scanner)}
+    if {[catch {ble connect $addr bd_autoname_cb} c]} { set ::bd(an_addr) ""; catch {ble start $::bd(scanner)}; return }
+    set ::bd(an_conn) $c
+    .bledbg.top.status configure -text "auto-naming [string range $addr 0 7]…"
+    set ::bd(an_after) [after 9000 bd_autoname_timeout]
+}
+# Read the "identity" characteristics: Device Name (2A00), and — since many
+# devices expose no 2A00 — Manufacturer (2A29) + Model (2A24) as a fallback.
+proc bd_autoname_bestname {} {
+    set v $::bd(an_vals)
+    if {[dict exists $v 2A00]} { return [dict get $v 2A00] }
+    set mk {}
+    foreach u {2A29 2A24} { if {[dict exists $v $u]} { lappend mk [dict get $v $u] } }
+    return [join $mk " "]
+}
+proc bd_autoname_cb {event data} {
+    if {$::bd(an_conn) eq ""} return
+    switch -- $event {
+        characteristic {
+            set cu [bd_ushort [dict get $data cuuid]]
+            if {[dict get $data state] eq "discovery"} {
+                if {$cu in {2A00 2A29 2A24}} {
+                    after 250 [list catch [list ble read $::bd(an_conn) [dict get $data suuid] [dict get $data sinstance] [dict get $data cuuid] [dict get $data cinstance]]]
+                }
+            } elseif {$cu in {2A00 2A29 2A24}} {
+                set v ""; catch {set v [dict get $data value]}
+                set s [string trim [string trimright [encoding convertfrom utf-8 $v] "\x00"]]
+                if {$s ne ""} { dict set ::bd(an_vals) $cu $s }
+                # finish early once we have a solid name (real Device Name, or mfr+model)
+                if {[dict exists $::bd(an_vals) 2A00] || ([dict exists $::bd(an_vals) 2A29] && [dict exists $::bd(an_vals) 2A24])} {
+                    set nm [bd_autoname_bestname]; if {$nm ne ""} { bd_autoname_finish $nm }
+                }
+            }
+        }
+        connection { if {[dict get $data state] eq "disconnected"} { bd_autoname_finish [bd_autoname_bestname] } }
+    }
+}
+proc bd_autoname_timeout {} { bd_autoname_finish [bd_autoname_bestname] }
+proc bd_autoname_finish {name} {
+    set addr $::bd(an_addr)
+    catch {after cancel $::bd(an_after)}
+    if {$::bd(an_conn) ne ""} { catch {ble close $::bd(an_conn)} }
+    set ::bd(an_conn) ""; set ::bd(an_addr) ""; set ::bd(an_after) ""
+    if {$name ne "" && $addr ne ""} {
+        dict set ::bd(resolved) $addr $name
+        if {[dict exists $::bd(devs) $addr]} {
+            lassign [dict get $::bd(devs) $addr] _o rssi
+            dict set ::bd(devs) $addr [list $name $rssi]; catch {bd_render_devs}
+        }
+        catch {bd_log "auto-named [string range $addr 0 7]… -> $name"}
+    }
+    # resume scanning for the next device
+    if {$::bd(scanner) ne "" && $::bd(conn) eq ""} { catch {ble start $::bd(scanner)} }
+    catch {.bledbg.top.status configure -text "scanning…"}
+}
 proc bd_toggle_scan {} {
     if {$::bd(scanner) eq ""} {
-        set ::bd(devs) [dict create]; bd_render_devs
+        set ::bd(devs) [dict create]; set ::bd(an_tried) [dict create]; bd_render_devs
         if {[catch {ble scanner bd_scan_cb} h]} { bd_log "scan error: $h"; return }
         set ::bd(scanner) $h; catch {ble start $h}
         .bledbg.top.scan configure -text "Stop scan"; .bledbg.top.status configure -text "scanning…"
@@ -171,6 +260,8 @@ proc bd_toggle_scan {} {
 proc bd_connect_selected {} {
     set i [.bledbg.pw.left.lb curselection]; if {$i eq ""} return
     set addr [lindex $::bd(order) $i]; if {$addr eq ""} return
+    # abort an in-flight auto-name sweep so it doesn't clash with the user's connect
+    if {$::bd(an_conn) ne ""} { catch {after cancel $::bd(an_after)}; catch {ble close $::bd(an_conn)}; set ::bd(an_conn) ""; set ::bd(an_addr) "" }
     if {$::bd(scanner) ne ""} { catch {ble stop $::bd(scanner)}; set ::bd(scanner) ""; .bledbg.top.scan configure -text "Start scan" }
     .bledbg.pw.right.tv delete [.bledbg.pw.right.tv children {}]
     array unset ::bdchar; array unset ::bdsub
@@ -287,4 +378,6 @@ bind .bledbg <Destroy> {
 }
 bd_log "ready — Start scan, pick a device, Connect, then Read / Subscribe / Write."
 bd_log "tip: Skale weight = subscribe to EF81, then Write 03 to EF80 to start the stream."
+bd_log "Auto-name: unnamed devices are briefly connected to read their real name (toggle top-right)."
+after 2500 bd_autoname_tick
 focus .bledbg
