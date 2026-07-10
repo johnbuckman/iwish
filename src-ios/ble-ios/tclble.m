@@ -214,7 +214,7 @@ static dispatch_queue_t gQueue = nil;
 - (void)startScan {
     if (self.central.state == CBManagerStatePoweredOn) {
         [self.central scanForPeripheralsWithServices:nil
-            options:@{CBCentralManagerScanOptionAllowDuplicatesKey:@YES}];
+            options:@{CBCentralManagerScanOptionAllowDuplicatesKey:@NO}];
         TBLog([NSString stringWithFormat:@"startScan: isScanning=%d cb=%@", (int)self.central.isScanning, self.scanCallback?:@"(nil)"]);
     } else {
         self.wantScan = YES;

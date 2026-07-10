@@ -36,10 +36,15 @@ set ::bd(names) [dict create \
     EF80 "Skale command" EF81 "Skale weight" EF82 "Skale button" \
     A000 "DE1" A002 "DE1 RequestedState" A00E "DE1 StateInfo"]
 proc bd_name {uuid} {
-    set s [string toupper $uuid]
-    if {[regexp {^0000([0-9A-F]{4})-0000-1000-8000-00805F9B34FB$} $s -> x]} { set s $x }
+    set s [bd_ushort $uuid]
     if {[dict exists $::bd(names) $s]} { return "[dict get $::bd(names) $s]  ($s)" }
     return $uuid
+}
+# normalise a 128-bit Bluetooth-base UUID down to its 16-bit short form (else upper-case as-is)
+proc bd_ushort {uuid} {
+    set s [string toupper $uuid]
+    if {[regexp {^0000([0-9A-F]{4})-0000-1000-8000-00805F9B34FB$} $s -> x]} { return $x }
+    return $s
 }
 proc bd_hex {data} {
     binary scan $data H* h
@@ -151,7 +156,16 @@ proc bd_connect_selected {} {
     array unset ::bdchar; array unset ::bdsub
     bd_log "connecting to $addr …"
     if {[catch {ble connect $addr bd_conn_cb} c]} { bd_log "connect error: $c"; return }   ;# ADDRESS FIRST
-    set ::bd(conn) $c; .bledbg.top.status configure -text "connecting…"
+    set ::bd(conn) $c; set ::bd(connaddr) $addr; set ::bd(namedone) 0
+    .bledbg.top.status configure -text "connecting…"
+}
+# Many devices don't broadcast a name in their advertisement, so the scan list
+# shows them "(unnamed)". Once connected, read the GATT Device Name (0x2A00) in
+# Generic Access and relabel the device — iOS also caches it, so later scans then
+# show the name too (this is why an iPad that's connected before shows names).
+proc bd_autoread_name {su si cu ci} {
+    if {$::bd(conn) eq ""} return
+    catch {ble read $::bd(conn) $su $si $cu $ci}
 }
 proc bd_disconnect {} { if {$::bd(conn) ne ""} { catch {ble close $::bd(conn)} }; bd_on_disconnect }
 proc bd_on_disconnect {} {
@@ -179,10 +193,27 @@ proc bd_conn_cb {event data} {
                 set id "$su/$cu/$ci"
                 if {![$tv exists $id]} { $tv insert $su end -id $id -text "  • [bd_name $cu]" }
                 set ::bdchar($id) [list $su $si $cu $ci]
+                # auto-read the Device Name characteristic to resolve an unnamed device
+                if {[bd_ushort $cu] eq "2A00" && !$::bd(namedone)} {
+                    after 400 [list bd_autoread_name $su $si $cu $ci]
+                }
             } else {
                 set acc [dict get $data access]; set v ""; catch {set v [dict get $data value]}
                 set tag [dict get {r READ c NOTIFY w WRITE-ack} $acc]
                 bd_log "$tag [bd_name $cu]: [bd_hex $v]"
+                # resolved Device Name (0x2A00) -> relabel the device in the scan list
+                if {[bd_ushort $cu] eq "2A00" && $v ne "" && $::bd(connaddr) ne ""} {
+                    set nm [string trimright [encoding convertfrom utf-8 $v] "\x00"]
+                    if {$nm ne ""} {
+                        set ::bd(namedone) 1
+                        set rssi "?"
+                        if {[dict exists $::bd(devs) $::bd(connaddr)]} { lassign [dict get $::bd(devs) $::bd(connaddr)] _o rssi }
+                        dict set ::bd(devs) $::bd(connaddr) [list $nm $rssi]
+                        catch {bd_render_devs}
+                        .bledbg.top.status configure -text "connected: $nm"
+                        bd_log "resolved device name (0x2A00): $nm"
+                    }
+                }
             }
         }
         descriptor { bd_log "subscribe confirmed ([bd_name [dict get $data cuuid]])" }
