@@ -30,6 +30,8 @@ commitment.
 ## Quality
 - [ ] Run the Tcl + Tk regression suites on-device / in the simulator and record
       the diff vs the desktop baseline (desktop UTF6 baseline is already clean).
-- [ ] A small sample-app gallery beyond `demo.tcl`.
-- [ ] Document the on-device debugging recipe (devicectl install/launch, pulling
-      logs from the app's Documents container).
+- [x] A small sample-app gallery beyond `demo.tcl` — the **File ▸ Demos** menu
+      plus the custom demos in [`demos/`](demos) (`bltgraph`, `bledemo`,
+      `borgdemo`, `paint`).
+- [x] Document the on-device debugging recipe (devicectl install/launch, pulling
+      logs from the app's Documents container) — see [`AGENTS.md`](AGENTS.md).

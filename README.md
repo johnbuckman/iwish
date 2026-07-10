@@ -9,11 +9,16 @@ layer) using the **AGG** anti-aliased renderer and **FreeType** for text — no
 WebView, no native-UIKit-widget bridge, just the actual Tk canvas/widgets
 composited onto an SDL2 Metal surface.
 
-> **Status: 0.1 — alpha.** The runtime is real and complete enough to run a
+> **Status: 0.2 — alpha.** The runtime is real and complete enough to run a
 > large, real-world third-party Tk application end-to-end on a physical iPad —
-> full GUI, the batteries-included extension set, and talking to hardware over
-> CoreBluetooth. APIs, the build layout, and the bundled extension set are still
-> in flux. Expect sharp edges. See [`BUGS.md`](BUGS.md) and [`TODO.md`](TODO.md).
+> full GUI, the batteries-included extension set (**~114 bundled packages, 64 of
+> them native `arm64-apple-ios` dylibs**), a **File ▸ Demos** menu of bundled
+> apps, and talking to hardware over CoreBluetooth. APIs, the build layout, and
+> the bundled extension set are still in flux. Expect sharp edges. See
+> [`BUGS.md`](BUGS.md) and [`TODO.md`](TODO.md).
+>
+> **Installing the app:** see [`INSTALL.md`](INSTALL.md) (Sideloadly / AltStore /
+> from source / EU notarized). **AI agents:** start at [`AGENTS.md`](AGENTS.md).
 
 This repo is a **recipe**: build scripts, a set of patches against upstream, and
 the iOS-native glue code. It does **not** redistribute the AndroWish, SDL2, or
@@ -41,9 +46,16 @@ want the whole source rather than patches to apply.
   edge-to-edge and fill the native screen.
 - Built `-DTCL_UTF_MAX=6` (UCS-4) so astral-plane characters and arrows render
   correctly (stock builds are UTF_MAX=3 and garble them).
-- A large bundled extension set built for `arm64-apple-ios`: tkimg (jpeg/png/
-  tiff), tls (LibreSSL), TclCurl, BLT 2.4, TkBLT (scientific plotting —
-  `blt::graph`/`barchart`/`vector`), tksvg, sqlite3, itcl, thread, zint.
+- A large bundled extension set built for `arm64-apple-ios` (~114 packages, 64
+  native dylibs): tkimg (jpeg/png/tiff), tls (LibreSSL), TclCurl, sqlite3, itcl,
+  itk, thread, tdom, Tktable, tktreectrl, zint, Img, tkpath, tkvnc, BLT 2.4,
+  **TkBLT** (scientific plotting — `blt::graph`/`barchart`/`vector`), **Tix**,
+  **vectcl**, tksvg, and more.
+- A **File ▸ Demos** menu in the console (added by [`launcher/main.tcl`](launcher/main.tcl))
+  that launches the bundled demo apps — including four iWish-specific ones in
+  [`demos/`](demos): `bltgraph` (TkBLT plotting), `bledemo` (a LightBlue-style
+  BLE debugger), `borgdemo` (the `borg` iOS bridge), and `paint`. Extensions that
+  can't exist on iOS appear greyed-out.
 - iOS-native shims (under [`src-ios/`](src-ios)) that re-implement the AndroWish
   `borg` and `ble` commands on Apple frameworks:
   - **`borg`** → `UIScreen` brightness, `UIDevice`/`UIScreen` info, `UIApplication
@@ -69,7 +81,13 @@ scripts in [`scripts/`](scripts) drive it:
 | `build-ext-dev.sh` | the loadable extension stack (tkimg, tls, TclCurl, tksvg, sqlite3, itcl, thread, zint) |
 | `build-blt-dev.sh` | BLT 2.4 (`libBLT24`) |
 | `build-tkblt-dev.sh` | TkBLT 3.2 — plotting widgets (`blt::graph`/`barchart`/`vector`); see [`demos/bltgraph.tcl`](demos/bltgraph.tcl) |
+| `build-device-batteries.sh` | stage the full battery set (~114 packages) into a bundle's `lib-batteries/` |
 | `build-utf6.sh`    | rebuilds Tcl/sdl2tk at `TCL_UTF_MAX=6` |
+
+The app's entry point is [`launcher/main.tcl`](launcher/main.tcl) (auto-run by the
+patched `tkAppInit.c`): it boots the Tk console, loads `borg`, builds the
+**File ▸ Demos** menu, and positions the windows. The custom demos it lists live
+in [`demos/`](demos).
 
 The shims in `src-ios/` are compiled to `borg1.0`/`ble1.0`/`hardexit` loadable
 dylibs (see the comments at the top of each `.c`/`.m` for the exact `clang` line).
@@ -162,9 +180,11 @@ wm title . "iWish"
 console show
 ```
 
-The **0.1-alpha release** attaches a prebuilt standalone `iWish.app` (the Tk demo
-in `scripts/demo.tcl`, no extra extensions) for `arm64-apple-ios`. It is
-**unsigned** — re-sign it for your own device/team before installing.
+The **0.2-alpha release** attaches a prebuilt **`iWish.ipa`** — the full
+batteries-included build (~114 packages) with the Demos menu — for
+`arm64-apple-ios`. It is a development build; **re-sign it for your own
+device/team before installing** (Sideloadly/AltStore do this automatically). See
+[`INSTALL.md`](INSTALL.md) for every install path.
 
 ## License
 
