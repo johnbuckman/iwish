@@ -58,40 +58,66 @@ long-term without thinking about the weekly expiry → **AltStore**.
 
 ---
 
-## 3. AltStore (auto-refresh)
+## 3. AltStore (recommended — one-tap install + auto-refresh)
 
-1. **Install AltServer** on the computer from [altstore.io](https://altstore.io)
-   (macOS or Windows; Windows needs the same iTunes + iCloud from Apple as above).
-2. **Connect the device by USB** and **Trust** it.
-3. From **AltServer** (menu-bar icon on macOS / system-tray on Windows):
-   **Install AltStore → pick your device → sign in with your Apple ID.** This
-   puts the **AltStore** app on the device.
-4. On the device: **Settings → General → VPN & Device Management → Trust** your
-   Apple ID certificate.
-5. Open **AltStore** on the device → **My Apps → "+"** → pick **`iWish.ipa`**.
-   It installs.
-6. **To get auto-refresh:** keep AltServer running on the computer, on the **same
-   Wi-Fi** as the device, and enable Background App Refresh. AltStore re-signs
-   the app before the 7 days lapse — in practice you just open your laptop on
-   your home network once a week and never think about the expiry.
+The best route: add iWish's **AltStore source** once, then iWish shows an
+**Install / Update** button that always points at the latest release, and
+AltStore re-signs it with your own Apple ID automatically. Three parts —
+**(A)** install AltStore, **(B)** add the iWish source, **(C)** install iWish.
 
-### Add the iWish source (one-tap install + updates)
+### A. Install AltStore (one-time)
 
-Instead of hunting down the `.ipa` each time, add iWish's **AltStore source** —
-then iWish shows an **Install/Update** button in AltStore that always points at
-the latest release, and AltStore re-signs it with your Apple ID automatically.
+AltStore is two pieces: **AltServer** (runs on your Mac/PC and does the signing)
+and the **AltStore** app (on your iPhone/iPad).
 
-- **One-tap (on the device, with AltStore installed):**
-  [**Add iWish to AltStore**](altstore://source?url=https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json)
-  · SideStore: [add to SideStore](sidestore://source?url=https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json)
-- **Manually:** in AltStore → **Browse → Sources → edit (＋)** → paste:
+1. **Install AltServer on your computer:**
+   - **macOS** — follow this walkthrough:
+     **<https://faq.altstore.io/altstore-classic/how-to-install-altstore-macos>**
+     (download from [altstore.io](https://altstore.io), move AltServer to
+     Applications, launch it — it lives in the menu bar).
+   - **Windows** — download AltInstaller from [altstore.io](https://altstore.io);
+     you also need **iTunes** and **iCloud** from **Apple's website** (not the
+     Microsoft Store versions), for the device drivers.
+2. **Plug your iPhone/iPad into the computer with USB** and tap **Trust** on the
+   device (unlock it first).
+3. **Install the AltStore app onto the device:** from the **AltServer** menu-bar
+   (macOS) / system-tray (Windows) icon → **Install AltStore → \[your device\]**,
+   then sign in with your **Apple ID** (a free one is fine; a secondary/burner
+   Apple ID is a common choice).
+4. **Trust the certificate** on the device: **Settings → General → VPN & Device
+   Management → \[your Apple ID\] → Trust**. Now open the **AltStore** app.
+
+### B. Add the iWish source
+
+- **One-tap** (do this *on the device*, with the AltStore app installed):
+  [**➕ Add iWish to AltStore**](altstore://source?url=https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json)
+  &nbsp;·&nbsp; SideStore: [add to SideStore](sidestore://source?url=https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json)
+- **Or manually:** in the **AltStore** app → **Browse** tab → **Sources**
+  (top-right) → **＋** → paste this URL → **Add Source**:
   ```
   https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json
   ```
 
-This is the **classic AltStore/SideStore** route (works anywhere, uses your own
-Apple ID, AltStore handles the 7-day refresh). It is *not* AltStore **PAL** — the
-EU marketplace — which needs a notarized build rather than a JSON source (see §5).
+### C. Install iWish
+
+5. In **AltStore → Browse**, open the **iWish** source and tap **GET / Install**
+   next to iWish. AltStore downloads the IPA and re-signs it with your Apple ID.
+   (First launch of AltStore may ask for your Apple ID password again — that's the
+   signing step.)
+6. **Launch iWish.** Updates later appear on AltStore's **My Apps** tab whenever a
+   new release ships — just tap **Update**.
+
+### Keeping it alive
+
+AltStore re-signs sideloaded apps before the **7-day** free-account limit lapses.
+Keep **AltServer** running on the computer, on the **same Wi-Fi** as the device,
+with Background App Refresh enabled — in practice you just open your laptop on
+your home network once a week and never think about the expiry. (A paid Apple
+Developer ID makes it 1 year.)
+
+> This is **classic AltStore/SideStore** — works anywhere, uses your own Apple ID.
+> It is *not* AltStore **PAL** (the EU marketplace), which needs a *notarized*
+> build rather than a JSON source — see §5.
 
 ---
 
