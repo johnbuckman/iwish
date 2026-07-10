@@ -1,0 +1,48 @@
+{
+  "name": "iWish",
+  "identifier": "com.decent.iwish.source",
+  "subtitle": "Tcl/Tk (AndroWish) on iOS",
+  "description": "AltStore source for iWish — AndroWish's batteries-included, SDL2-rendered Tcl/Tk wish, ported to iOS/iPadOS. Add this source in AltStore/SideStore to install and auto-update iWish.",
+  "iconURL": "https://raw.githubusercontent.com/johnbuckman/iwish/main/assets/iwish-icon-1024.png",
+  "website": "https://github.com/johnbuckman/iwish",
+  "tintColor": "1E6FB5",
+  "apps": [
+    {
+      "name": "iWish",
+      "bundleIdentifier": "com.decent.iWish",
+      "developerName": "John Buckman",
+      "subtitle": "Batteries-included Tcl/Tk with SDL2",
+      "localizedDescription": "A real Tcl 8.6 interpreter and Tk 8.6 widget set on an iPad or iPhone, rendered through AndroWish's SdlTk (X11-on-SDL2) with AGG + FreeType — no WebView, no UIKit widget bridge. ~114 bundled packages (64 native arm64 dylibs incl. tkimg, tls, TclCurl, sqlite3, itcl, TkBLT, Tix, vectcl), a File > Demos menu, borg (device bridge) and ble (CoreBluetooth) shims, and a LightBlue-style BLE debugger.\n\nAlpha software — expect sharp edges. Not on the App Store (it's an interpreter that loads compiled extensions). See the project page for details.",
+      "iconURL": "https://raw.githubusercontent.com/johnbuckman/iwish/main/assets/iwish-icon-1024.png",
+      "tintColor": "1E6FB5",
+      "category": "developer",
+      "website": "https://github.com/johnbuckman/iwish",
+      "versions": [
+        {
+          "version": "0.2",
+          "buildVersion": "0.2",
+          "marketingVersion": "0.2-alpha",
+          "date": "2026-07-10T00:00:00Z",
+          "localizedDescription": "0.2-alpha: full batteries-included build (~114 packages) with the File > Demos menu, TkBLT/Tix/vectcl, borg + ble shims, and a LightBlue-style BLE debugger.",
+          "downloadURL": "https://github.com/johnbuckman/iwish/releases/download/v0.2-alpha/iWish.ipa",
+          "size": 26720126,
+          "sha256": "1c7c12b4edf07f63cd6f545faf7ea8fe43cfaad4028e38040e3faf7ab9ee1333",
+          "minOSVersion": "15.0"
+        }
+      ],
+      "version": "0.2",
+      "versionDate": "2026-07-10T00:00:00Z",
+      "versionDescription": "0.2-alpha: full batteries-included build (~114 packages) with the File > Demos menu, TkBLT/Tix/vectcl, borg + ble shims, and a LightBlue-style BLE debugger.",
+      "downloadURL": "https://github.com/johnbuckman/iwish/releases/download/v0.2-alpha/iWish.ipa",
+      "size": 26720126,
+      "minOSVersion": "15.0",
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSBluetoothAlwaysUsageDescription": "iWish's ble command and BLE debugger use Bluetooth to scan for and talk to nearby devices."
+        }
+      }
+    }
+  ],
+  "news": []
+}
