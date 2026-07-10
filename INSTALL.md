@@ -115,9 +115,21 @@ with Background App Refresh enabled — in practice you just open your laptop on
 your home network once a week and never think about the expiry. (A paid Apple
 Developer ID makes it 1 year.)
 
-> This is **classic AltStore/SideStore** — works anywhere, uses your own Apple ID.
-> It is *not* AltStore **PAL** (the EU marketplace), which needs a *notarized*
-> build rather than a JSON source — see §5.
+### No computer to keep running? Use SideStore
+
+**[SideStore](https://sidestore.io/)** is an AltStore-compatible app that refreshes
+apps **entirely on-device** (via an on-device WireGuard loopback), so you don't
+need a Mac/PC running on the same Wi-Fi to keep iWish signed. Set it up once per
+their site's guide, then **add the exact same iWish source** — the SideStore
+one-tap link works:
+[**➕ Add iWish to SideStore**](sidestore://source?url=https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json),
+or paste `https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json`
+under **Browse → Sources → ＋**. Everything else (install, updates, 7-day refresh)
+is the same as AltStore.
+
+> AltStore and SideStore are both **classic** sideloading — they work anywhere and
+> use your own Apple ID. Neither is AltStore **PAL** (the EU marketplace), which
+> needs a *notarized* build rather than a JSON source — see §5.
 
 ---
 
