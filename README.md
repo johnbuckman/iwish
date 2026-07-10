@@ -19,6 +19,11 @@ composited onto an SDL2 Metal surface.
 >
 > **Installing the app:** see [`INSTALL.md`](INSTALL.md) (Sideloadly / AltStore /
 > from source / EU notarized). **AI agents:** start at [`AGENTS.md`](AGENTS.md).
+>
+> **Talk (EuroTcl 2026):** a 23-slide walkthrough of the port — the lineage from
+> undroidwish, the architecture, `borg`/`ble`, iOS 9 / armv7 + jailbreak, App
+> Review, and every install path. Read [`iWish-for-iOS.pdf`](iWish-for-iOS.pdf),
+> or open the editable [`iWish-for-iOS.pptx`](iWish-for-iOS.pptx).
 
 This repo is a **recipe**: build scripts, a set of patches against upstream, and
 the iOS-native glue code. It does **not** redistribute the AndroWish, SDL2, or
