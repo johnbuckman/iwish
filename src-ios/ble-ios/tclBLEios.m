@@ -190,7 +190,11 @@ static BLEManager *gMgr = nil;
  * self.scanServices both narrows the scan and makes it work headless. */
 - (void)beginScan {
     NSArray *svcs = self.scanServices;
-    [self.central scanForPeripheralsWithServices:svcs options:@{ CBCentralManagerScanOptionAllowDuplicatesKey: @YES }];
+    /* AllowDuplicates NO: iOS then COALESCES the advertisement + scan-response
+     * packets into one didDiscover, so CBAdvertisementDataLocalNameKey (the
+     * device name usually lives in the scan response) is present. With YES you
+     * get raw packets and the name is missing -> every device shows unnamed. */
+    [self.central scanForPeripheralsWithServices:svcs options:@{ CBCentralManagerScanOptionAllowDuplicatesKey: @NO }];
     BLELog([NSString stringWithFormat:@"beginScan: nservices=%lu isScanning=%d",
             (unsigned long)svcs.count, (int)self.central.isScanning]);
     /* iOS suppresses an all-peripherals scan unless the app is the ACTIVE
