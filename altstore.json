@@ -37,10 +37,24 @@
       "size": 26720126,
       "minOSVersion": "15.0",
       "appPermissions": {
-        "entitlements": [],
-        "privacy": {
-          "NSBluetoothAlwaysUsageDescription": "iWish's ble command and BLE debugger use Bluetooth to scan for and talk to nearby devices."
-        }
+        "entitlements": [
+          {
+            "name": "get-task-allow"
+          },
+          {
+            "name": "keychain-access-groups"
+          }
+        ],
+        "privacy": [
+          {
+            "name": "BluetoothAlways",
+            "usageDescription": "iWish's ble command and BLE debugger use Bluetooth to scan for and connect to nearby devices."
+          },
+          {
+            "name": "BluetoothPeripheral",
+            "usageDescription": "iWish's ble command and BLE debugger use Bluetooth to communicate with nearby devices."
+          }
+        ]
       }
     }
   ],
