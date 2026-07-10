@@ -118,6 +118,26 @@ static const char *stateName(CBManagerState st) {
     }
 }
 
+/* Bluetooth-SIG company identifier (little-endian, first 2 bytes of manufacturer
+ * data) -> a friendly name for the common vendors, so an unnamed device can still
+ * be labelled by who made it. Falls back to the hex id. */
+static NSString *companyName(unsigned cid) {
+    switch (cid) {
+        case 0x004C: return @"Apple";
+        case 0x0006: return @"Microsoft";
+        case 0x00E0: return @"Google";
+        case 0x0075: return @"Samsung";
+        case 0x0087: return @"Garmin";
+        case 0x0059: return @"Nordic";
+        case 0x000F: return @"Broadcom";
+        case 0x012D: return @"Sony";
+        case 0x0157: return @"Huawei";
+        case 0x038F: return @"Xiaomi";
+        case 0x0499: return @"Ruuvi";
+    }
+    return [NSString stringWithFormat:@"0x%04X", cid];
+}
+
 static NSString *longUUID(CBUUID *u) {
     NSString *s = [u.UUIDString uppercaseString];
     if (s.length == 4) return [NSString stringWithFormat:@"0000%@-0000-1000-8000-00805F9B34FB", s];
@@ -244,10 +264,21 @@ static dispatch_queue_t gQueue = nil;
     self.byUUID[addr] = p;
     NSString *name = adv[CBAdvertisementDataLocalNameKey];
     if (!name) name = p.name ? p.name : @"";
+    /* Extra advertised data so the UI can label a device even without a name:
+     * the advertised service UUIDs and the manufacturer (from the company id). */
+    NSMutableArray *suuids = [NSMutableArray array];
+    for (CBUUID *u in adv[CBAdvertisementDataServiceUUIDsKey]) { [suuids addObject:u.UUIDString]; }
+    NSString *svcs = [suuids componentsJoinedByString:@" "];
+    NSString *mfr = @"";
+    NSData *md = adv[CBAdvertisementDataManufacturerDataKey];
+    if (md.length >= 2) {
+        const unsigned char *b = md.bytes;
+        mfr = companyName((unsigned)(b[0] | (b[1] << 8)));
+    }
     if (self.scanCallback) {
         BLEEval([NSString stringWithFormat:
-            @"%@ scan [dict create address %@ name %@ rssi %@]",
-            self.scanCallback, q(addr), q(name), rssi]);
+            @"%@ scan [dict create address %@ name %@ rssi %@ services %@ mfr %@]",
+            self.scanCallback, q(addr), q(name), rssi, q(svcs), q(mfr)]);
     }
 }
 

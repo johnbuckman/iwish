@@ -127,11 +127,31 @@ proc bd_render_devs {} {
         $lb insert end [format "%4s  %s" $rssi $name]; lappend ::bd(order) $addr
     }
 }
+# A device that broadcasts no name can often still be labelled from what it DOES
+# advertise (without connecting): its service UUIDs (mapped to friendly names) and
+# its manufacturer. e.g. "Heart Rate · Apple", "DE1", "Battery".
+proc bd_adv_label {data} {
+    set parts {}
+    set svcs ""; catch {set svcs [dict get $data services]}
+    foreach u $svcs {
+        set s [bd_ushort $u]
+        if {[dict exists $::bd(names) $s]} { lappend parts [dict get $::bd(names) $s] }
+    }
+    set out [join [lrange $parts 0 2] " / "]
+    set mfr ""; catch {set mfr [dict get $data mfr]}
+    if {$mfr ne "" && ![string match "0x*" $mfr]} {
+        if {$out ne ""} { append out " · $mfr" } else { set out $mfr }
+    }
+    return $out
+}
 proc bd_scan_cb {event data} {
     if {$event eq "state"} { catch {.bledbg.top.status configure -text "Bluetooth: [dict get $data state]"}; return }
     if {$event ne "scan"} return
     set addr [dict get $data address]; set name [dict get $data name]; set rssi [dict get $data rssi]
-    if {$name eq ""} { set name "(unnamed)" }
+    if {$name eq ""} {
+        set lbl [bd_adv_label $data]
+        set name [expr {$lbl ne "" ? "‹$lbl›" : "(unnamed)"}]  ;# ‹inferred›
+    }
     dict set ::bd(devs) $addr [list $name $rssi]; catch {bd_render_devs}
 }
 proc bd_toggle_scan {} {
