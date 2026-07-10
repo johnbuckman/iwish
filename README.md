@@ -198,6 +198,13 @@ batteries-included build (~114 packages) with the Demos menu — for
 device/team before installing** (Sideloadly/AltStore do this automatically). See
 [`INSTALL.md`](INSTALL.md) for every install path.
 
+**AltStore / SideStore source** (one-tap install + auto-updates):
+```
+https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json
+```
+Add it in AltStore → Sources, or tap
+[Add to AltStore](altstore://source?url=https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json).
+
 ## License
 
 The patches, scripts, shims, and documentation here are licensed under the

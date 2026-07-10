@@ -75,6 +75,24 @@ long-term without thinking about the weekly expiry → **AltStore**.
    the app before the 7 days lapse — in practice you just open your laptop on
    your home network once a week and never think about the expiry.
 
+### Add the iWish source (one-tap install + updates)
+
+Instead of hunting down the `.ipa` each time, add iWish's **AltStore source** —
+then iWish shows an **Install/Update** button in AltStore that always points at
+the latest release, and AltStore re-signs it with your Apple ID automatically.
+
+- **One-tap (on the device, with AltStore installed):**
+  [**Add iWish to AltStore**](altstore://source?url=https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json)
+  · SideStore: [add to SideStore](sidestore://source?url=https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json)
+- **Manually:** in AltStore → **Browse → Sources → edit (＋)** → paste:
+  ```
+  https://raw.githubusercontent.com/johnbuckman/iwish/main/altstore.json
+  ```
+
+This is the **classic AltStore/SideStore** route (works anywhere, uses your own
+Apple ID, AltStore handles the 7-day refresh). It is *not* AltStore **PAL** — the
+EU marketplace — which needs a notarized build rather than a JSON source (see §5).
+
 ---
 
 ## 4. Build from source (any Mac)
