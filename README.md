@@ -109,7 +109,7 @@ Two more helper scripts package the result:
 | script | does |
 |--------|------|
 | `build-icon.sh <image> [<app>]`              | any image → opaque 1024 → `actool` `AppIcon` asset catalog (`Assets.car`), optionally copied into a bundle |
-| `relocate-frameworks.sh <app>`               | move all native dylibs from `lib-batteries/` into `Frameworks/` + rewrite the Tcl `load` paths — **required** so AltStore/SideStore (which re-sign only the executable + `Frameworks/`) produce an installable bundle. Run as the final step before signing. |
+| `relocate-frameworks.sh <app>`               | wrap every native dylib in its own `.framework` bundle under `Frameworks/` + rewrite the Tcl `load` paths — **required** so AltStore/SideStore produce an installable bundle. Their `ldid` re-signs only the executable and nested *bundles* (`Frameworks/*.framework`, `PlugIns/*.appex`), so each dylib must be a real `.framework` (dir + `Info.plist`). Run as the final step before signing. |
 | `sign-and-install-device.sh <app> <identity> <profile> <udid> [entitlements]` | sign nested dylibs + the app and `devicectl install` to a device |
 
 ### The patches
@@ -148,13 +148,14 @@ tree. The iWish changes are also marked inline with `iwish:` comments.)
    hidden, `MinimumOSVersion 15.0`), and — for the full battery set — a
    `lib-batteries/` of the extension dylibs.
 6. Build the icon: `scripts/build-icon.sh <image> <your.app>`.
-7. **Relocate the dylibs into `Frameworks/`** (required for AltStore/SideStore):
-   `scripts/relocate-frameworks.sh <your.app>`. This moves every native
-   extension `.dylib` out of `lib-batteries/` into `Frameworks/` and rewrites the
-   Tcl `load` paths. AltStore/SideStore re-sign only the executable and
-   `Frameworks/` via `ldid`; dylibs left elsewhere keep their original signature
-   and iOS rejects the install with `0xe8008001`. Run this as the last step
-   before signing.
+7. **Wrap the dylibs in `.framework` bundles** (required for AltStore/SideStore):
+   `scripts/relocate-frameworks.sh <your.app>`. This wraps every native extension
+   `.dylib` in its own `Frameworks/libFoo.framework/` (with an `Info.plist`) and
+   rewrites the Tcl `load` paths. AltStore/SideStore re-sign with `ldid`, which
+   only re-signs the executable and nested *bundles* it recognises
+   (`Frameworks/*.framework`, `PlugIns/*.appex`) — a loose `.dylib`, even inside
+   `Frameworks/`, is skipped and keeps its original signature, so iOS rejects the
+   install with `0xe8008001`. Run this as the last step before signing.
 8. Sign + install: `scripts/sign-and-install-device.sh <your.app> <identity> <profile> <udid> [entitlements]`
    — needs an Apple Development cert + a provisioning profile that includes the
    device UDID.
