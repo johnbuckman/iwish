@@ -19,6 +19,17 @@
       "website": "https://github.com/johnbuckman/iwish",
       "versions": [
         {
+          "version": "0.2.1",
+          "buildVersion": "0.2.1",
+          "marketingVersion": "0.2.1",
+          "date": "2026-07-11T05:39:38Z",
+          "localizedDescription": "**iWish 0.2.1-alpha** — Tcl/Tk (AndroWish `undroidwish`) on iOS/iPadOS, `arm64-apple-ios`.\n\n### What changed since 0.2-alpha\nThis is a **packaging fix so AltStore / SideStore can install iWish.** No feature or code changes — functionally identical to 0.2-alpha.\n\nPreviously, AltStore/SideStore installs failed at the last step with:\n\n> Failed to verify code signature … `0xe8008001` (An unknown error has occurred.)\n\n**Cause:** iWish ships ~63 native Tcl/Tk extension `.dylib`s. They used to live under `lib-batteries/…`. AltStore (via `ldid`) re-signs the app executable and everything in **`Frameworks/`**, but *not* dylibs in other folders — so those kept their original signature and iOS rejected the bundle.\n\n**Fix:** all native `.dylib`s now live in **`iWish.app/Frameworks/`**, and the Tcl `load` paths were updated accordingly. AltStore/SideStore now re-sign every binary consistently, so the install completes. Verified end-to-end (all bundled packages load; an `ldid` resign leaves zero unsigned Mach-O).\n\nIf a previous attempt failed: refresh the iWish source in AltStore/SideStore (pull to refresh) and install/update again.\n\n### Installing\n`iWish.ipa` is a **development build and is UNSIGNED** — Sideloadly / AltStore / SideStore re-sign it with your own Apple ID (free = 7-day, paid = 1 year). See **[INSTALL.md](https://github.com/johnbuckman/iwish/blob/main/INSTALL.md)**.\n\n> Not on the App Store (it's an interpreter that `dlopen`s C extensions). Alpha — expect sharp edges.",
+          "downloadURL": "https://github.com/johnbuckman/iwish/releases/download/v0.2.1/iWish.ipa",
+          "size": 27347662,
+          "sha256": "94e67fd6068d6be11b3b5211f2a0344702a6f45062eb2123ca4ca0312d00bc4e",
+          "minOSVersion": "15.0"
+        },
+        {
           "version": "0.2",
           "buildVersion": "0.2",
           "marketingVersion": "0.2-alpha",
@@ -30,11 +41,11 @@
           "minOSVersion": "15.0"
         }
       ],
-      "version": "0.2",
-      "versionDate": "2026-07-10T09:08:31Z",
-      "versionDescription": "**iWish 0.2-alpha** — Tcl/Tk (AndroWish `undroidwish`) on iOS/iPadOS, `arm64-apple-ios`.\n\nA real Tcl 8.6 interpreter + Tk 8.6 widget set on an iPad/iPhone, rendered through AndroWish's SdlTk (X11-on-SDL2) with AGG + FreeType — no WebView, no UIKit widget bridge.\n\n### What's new since 0.1-alpha\n- **Full batteries-included build** — ~114 bundled packages, 64 native `arm64-apple-ios` dylibs (tkimg, tls/LibreSSL, TclCurl, sqlite3, itcl, itk, thread, tdom, Tktable, tktreectrl, zint, Img, tkpath, tkvnc, BLT 2.4, **TkBLT**, **Tix**, **vectcl**, tksvg, …).\n- **File ▸ Demos menu** in the console with bundled demo apps, including four iWish-specific ones: `bltgraph` (TkBLT plotting), `bledemo` (LightBlue-style BLE debugger), `borgdemo` (the `borg` iOS bridge), `paint`.\n- **`borg`** (device bridge) and **`ble`** (CoreBluetooth) iOS shims.\n- New docs: [`INSTALL.md`](https://github.com/johnbuckman/iwish/blob/main/INSTALL.md) (Sideloadly / AltStore / from source / EU notarized) and [`AGENTS.md`](https://github.com/johnbuckman/iwish/blob/main/AGENTS.md).\n\n### Installing\n`iWish.ipa` is a **development build and is UNSIGNED** — you must re-sign it with your own Apple ID before it will launch. Easiest paths:\n- **Sideloadly** or **AltStore** — re-sign automatically (free Apple ID = 7-day expiry; paid = 1 year).\n- **EU devices** — a notarized web/marketplace install has no expiry and needs no computer.\n\nFull step-by-step + a Sideloadly-vs-AltStore comparison: see **[INSTALL.md](https://github.com/johnbuckman/iwish/blob/main/INSTALL.md)**.\n\n> Not on the App Store (and can't be — it's an interpreter that `dlopen`s C extensions). Alpha: expect sharp edges. See [BUGS.md](https://github.com/johnbuckman/iwish/blob/main/BUGS.md).",
-      "downloadURL": "https://github.com/johnbuckman/iwish/releases/download/v0.2-alpha/iWish.ipa",
-      "size": 26720126,
+      "version": "0.2.1",
+      "versionDate": "2026-07-11T05:39:38Z",
+      "versionDescription": "**iWish 0.2.1-alpha** — Tcl/Tk (AndroWish `undroidwish`) on iOS/iPadOS, `arm64-apple-ios`.\n\n### What changed since 0.2-alpha\nThis is a **packaging fix so AltStore / SideStore can install iWish.** No feature or code changes — functionally identical to 0.2-alpha.\n\nPreviously, AltStore/SideStore installs failed at the last step with:\n\n> Failed to verify code signature … `0xe8008001` (An unknown error has occurred.)\n\n**Cause:** iWish ships ~63 native Tcl/Tk extension `.dylib`s. They used to live under `lib-batteries/…`. AltStore (via `ldid`) re-signs the app executable and everything in **`Frameworks/`**, but *not* dylibs in other folders — so those kept their original signature and iOS rejected the bundle.\n\n**Fix:** all native `.dylib`s now live in **`iWish.app/Frameworks/`**, and the Tcl `load` paths were updated accordingly. AltStore/SideStore now re-sign every binary consistently, so the install completes. Verified end-to-end (all bundled packages load; an `ldid` resign leaves zero unsigned Mach-O).\n\nIf a previous attempt failed: refresh the iWish source in AltStore/SideStore (pull to refresh) and install/update again.\n\n### Installing\n`iWish.ipa` is a **development build and is UNSIGNED** — Sideloadly / AltStore / SideStore re-sign it with your own Apple ID (free = 7-day, paid = 1 year). See **[INSTALL.md](https://github.com/johnbuckman/iwish/blob/main/INSTALL.md)**.\n\n> Not on the App Store (it's an interpreter that `dlopen`s C extensions). Alpha — expect sharp edges.",
+      "downloadURL": "https://github.com/johnbuckman/iwish/releases/download/v0.2.1/iWish.ipa",
+      "size": 27347662,
       "minOSVersion": "15.0",
       "appPermissions": {
         "entitlements": [
