@@ -19,6 +19,17 @@
       "website": "https://github.com/johnbuckman/iwish",
       "versions": [
         {
+          "version": "0.2.2",
+          "buildVersion": "0.2.2",
+          "marketingVersion": "0.2.2",
+          "date": "2026-07-11T06:03:04Z",
+          "localizedDescription": "**iWish 0.2.2-alpha** — the real AltStore/SideStore install fix. No feature changes.\n\n### What changed since 0.2.1\n0.2.1 moved the ~63 native extension dylibs into `Frameworks/` as **loose `.dylib`** files. That turned out not to be enough: AltStore/SideStore re-sign with **`ldid`**, and their `ldid` only re-signs nested code it recognises as a **bundle** — its rule matches `Frameworks/<name>.framework/…/Info.plist`. A loose `.dylib` isn't a bundle, so it was skipped and kept its old signature → install still failed with `0xe8008001`.\n\n**0.2.2 wraps each dylib in a real `.framework` bundle** (`Frameworks/libFoo.framework/{Info.plist, libFoo}`) and points the Tcl `load` paths at them. Now AltStore/SideStore re-sign every binary with your Apple ID, so the install completes. Verified end-to-end (all bundled packages load at runtime; an `ldid` re-sign leaves zero unsigned Mach-O).\n\nIf a previous attempt failed: in AltStore/SideStore, **refresh the iWish source** (pull to refresh, or remove & re-add), then install/update.\n\n### Installing\n`iWish.ipa` is a development build, **unsigned** — Sideloadly / AltStore / SideStore re-sign it with your own Apple ID. See **[INSTALL.md](https://github.com/johnbuckman/iwish/blob/main/INSTALL.md)**.",
+          "downloadURL": "https://github.com/johnbuckman/iwish/releases/download/v0.2.2/iWish.ipa",
+          "size": 27481737,
+          "sha256": "416b7a13c2771e308bcdb74933aac81262f0ce8feb808bd4f5452d035f5f739f",
+          "minOSVersion": "15.0"
+        },
+        {
           "version": "0.2.1",
           "buildVersion": "0.2.1",
           "marketingVersion": "0.2.1",
@@ -41,11 +52,11 @@
           "minOSVersion": "15.0"
         }
       ],
-      "version": "0.2.1",
-      "versionDate": "2026-07-11T05:39:38Z",
-      "versionDescription": "**iWish 0.2.1-alpha** — Tcl/Tk (AndroWish `undroidwish`) on iOS/iPadOS, `arm64-apple-ios`.\n\n### What changed since 0.2-alpha\nThis is a **packaging fix so AltStore / SideStore can install iWish.** No feature or code changes — functionally identical to 0.2-alpha.\n\nPreviously, AltStore/SideStore installs failed at the last step with:\n\n> Failed to verify code signature … `0xe8008001` (An unknown error has occurred.)\n\n**Cause:** iWish ships ~63 native Tcl/Tk extension `.dylib`s. They used to live under `lib-batteries/…`. AltStore (via `ldid`) re-signs the app executable and everything in **`Frameworks/`**, but *not* dylibs in other folders — so those kept their original signature and iOS rejected the bundle.\n\n**Fix:** all native `.dylib`s now live in **`iWish.app/Frameworks/`**, and the Tcl `load` paths were updated accordingly. AltStore/SideStore now re-sign every binary consistently, so the install completes. Verified end-to-end (all bundled packages load; an `ldid` resign leaves zero unsigned Mach-O).\n\nIf a previous attempt failed: refresh the iWish source in AltStore/SideStore (pull to refresh) and install/update again.\n\n### Installing\n`iWish.ipa` is a **development build and is UNSIGNED** — Sideloadly / AltStore / SideStore re-sign it with your own Apple ID (free = 7-day, paid = 1 year). See **[INSTALL.md](https://github.com/johnbuckman/iwish/blob/main/INSTALL.md)**.\n\n> Not on the App Store (it's an interpreter that `dlopen`s C extensions). Alpha — expect sharp edges.",
-      "downloadURL": "https://github.com/johnbuckman/iwish/releases/download/v0.2.1/iWish.ipa",
-      "size": 27347662,
+      "version": "0.2.2",
+      "versionDate": "2026-07-11T06:03:04Z",
+      "versionDescription": "**iWish 0.2.2-alpha** — the real AltStore/SideStore install fix. No feature changes.\n\n### What changed since 0.2.1\n0.2.1 moved the ~63 native extension dylibs into `Frameworks/` as **loose `.dylib`** files. That turned out not to be enough: AltStore/SideStore re-sign with **`ldid`**, and their `ldid` only re-signs nested code it recognises as a **bundle** — its rule matches `Frameworks/<name>.framework/…/Info.plist`. A loose `.dylib` isn't a bundle, so it was skipped and kept its old signature → install still failed with `0xe8008001`.\n\n**0.2.2 wraps each dylib in a real `.framework` bundle** (`Frameworks/libFoo.framework/{Info.plist, libFoo}`) and points the Tcl `load` paths at them. Now AltStore/SideStore re-sign every binary with your Apple ID, so the install completes. Verified end-to-end (all bundled packages load at runtime; an `ldid` re-sign leaves zero unsigned Mach-O).\n\nIf a previous attempt failed: in AltStore/SideStore, **refresh the iWish source** (pull to refresh, or remove & re-add), then install/update.\n\n### Installing\n`iWish.ipa` is a development build, **unsigned** — Sideloadly / AltStore / SideStore re-sign it with your own Apple ID. See **[INSTALL.md](https://github.com/johnbuckman/iwish/blob/main/INSTALL.md)**.",
+      "downloadURL": "https://github.com/johnbuckman/iwish/releases/download/v0.2.2/iWish.ipa",
+      "size": 27481737,
       "minOSVersion": "15.0",
       "appPermissions": {
         "entitlements": [
