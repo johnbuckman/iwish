@@ -19,13 +19,14 @@ SDL2/Tcl/Tk sources.
 | Path | What it is |
 |------|-----------|
 | [`README.md`](README.md) | Human overview: what works, how it's built, the patch list, the build outline, the built-in Unix commands. **The authoritative build reference.** |
-| [`INSTALL.md`](INSTALL.md) | How end users install the `.ipa` (Sideloadly / AltStore / from source / EU notarized), with the Sideloadly-vs-AltStore comparison. |
+| [`INSTALL.md`](INSTALL.md) | How end users install the `.ipa` (Sideloadly / AltStore / from source / EU notarized), with the Sideloadly-vs-AltStore comparison. ⚠️ **Out of date as of 2026-07-20:** AltStore can no longer sign for modern iOS, and `iSideload` is now the recommended route — see [`EUROTCL2026-SLIDES.md`](EUROTCL2026-SLIDES.md). |
 | [`scripts/`](scripts) | The build recipe. `build-device.sh` (foundation), `build-ext-dev.sh` (extension stack), `build-tkblt-dev.sh` (TkBLT plotting), `build-blt-dev.sh` (BLT 2.4), `build-device-batteries.sh` (stage the full battery set), `build-utf6.sh`, `sign-and-install-device.sh`, `unix-commands.tcl`. |
 | [`launcher/main.tcl`](launcher/main.tcl) | The iWish app launcher: boots the Tk console (titled "iWish"), loads `borg`, registers the **File ▸ Demos** menu, positions windows on launch. This is the app's entry point (auto-run by the patched `tkAppInit.c`). |
 | [`demos/`](demos) | The custom Tk demos wired into the Demos menu: `bltgraph.tcl` (TkBLT plotting), `bledemo.tcl` (LightBlue-style BLE debugger), `borgdemo.tcl` (the iOS `borg` bridge), `paint.tcl`. |
 | [`src-ios/`](src-ios) | iOS-native shims (`.m`): `borg-ios` (device bridge), `ble-ios` (CoreBluetooth), `hardexit` (clean `_exit`), `ble-diag` (BLE diagnostics). Each file's header has the exact `clang` line. |
 | [`patches/`](patches) | Patches against AndroWish's `jni/sdl2tk` and stock **SDL 2.30.11**. Applied via [`apply-patches.sh`](apply-patches.sh). Changes are also marked inline with `iwish:` comments. |
 | [`BUGS.md`](BUGS.md), [`TODO.md`](TODO.md) | Known issues and roadmap. |
+| [`EUROTCL2026-SLIDES.md`](EUROTCL2026-SLIDES.md) | The EuroTcl 2026 talk deck (`iWish-for-iOS.pptx` / `.pdf`): design system, slide↔file mapping, edit toolchain, and the current sideloading story. **Read this before touching the deck — it is hand-edited and must be patched, never regenerated.** |
 | `IOS9-*.md` | The **separate 32-bit armv7 / iOS 9** port (jailbroken A5/A6 devices, e.g. iPad mini 1). Different target — don't conflate with the arm64 build. Full-source sibling repo: [`iwish-ios9`](https://github.com/johnbuckman/iwish-ios9). |
 
 Sibling repo for the macOS Apple-Silicon build:
